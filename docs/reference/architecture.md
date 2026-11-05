@@ -92,4 +92,4 @@ Read it top to bottom:
 | Queue pins | `swim watch` before a lane starts | Enforced; the stage and the pins are checked again right before the lane's process starts |
 | Guard | `guard` in the lane process | Advisory |
 | Approval rules | `swim run`'s launcher, from `approvals/`, `lookup.yml` and its environment as they were when the run started | Enforced for every guard a lane calls; the launcher records each approval, and `swim verify` fails on one it didn't |
-| Chain | `swim verify` | Detects edits (consistent); re-signing with a key outside the pinned `trust.yml` (trusted); truncation or replacement after a checkpoint left the machine (anchored, with `chain_anchors`) |
+| Chain | `swim verify` | Detects edits: a changed, removed or reordered entry, log or kept script. Not a chain re-signed wholesale, or cut short at its end |

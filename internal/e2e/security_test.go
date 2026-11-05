@@ -8,7 +8,6 @@ package e2e
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,7 +17,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
-	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
 // gap skips a case that documents a known gap, naming the task(s) that
@@ -105,40 +103,6 @@ func (b *boundary) links() []chain.Link {
 		b.t.Fatal(err)
 	}
 	return links
-}
-
-// resign is an attacker with write access re-signing every entry with a
-// key of their own and swapping the chain file.
-func (b *boundary) resign(t *testing.T) {
-	t.Helper()
-	p := filepath.Join(t.TempDir(), "mallory")
-	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "mallory", "-f", p).CombinedOutput(); err != nil {
-		t.Fatalf("%v %s", err, out)
-	}
-	key, err := sign.LoadKey(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Entries that name others by hash (a round's approvals, the run's
-	// attestation) are rewritten to the new hashes.
-	links := b.links()
-	os.Remove(chain.Path(b.root))
-	rehash := map[string]string{}
-	for _, l := range links {
-		e := l.Entry
-		e.Approvals = nil
-		for _, h := range l.Approvals {
-			e.Approvals = append(e.Approvals, rehash[h])
-		}
-		h, err := chain.Append(b.root, e, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rehash[l.Hash] = h
-	}
-	if b.links()[0].SignedBy() == links[0].SignedBy() {
-		t.Fatal("the chain wasn't re-signed")
-	}
 }
 
 // noMarker fails when the guarded command ran.
@@ -312,41 +276,6 @@ func TestSecurity(t *testing.T) {
 			if !round {
 				t.Error("no round entry for lane 2")
 			}
-		}},
-		{"the chain and its signer key replaced: consistent, not trusted", "T8", func(t *testing.T) {
-			b := newBoundaryRepo(t)
-			// The runner's key is trusted, and swim verify pins trust.yml.
-			b.mustSwim("keys", "trust")
-			b.approve(1)
-			b.mustSwim("run", "1", "--plain")
-			contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes", "trusted     yes", "pinned now, on first use")
-			b.resign(t)
-			// Checked against itself the chain holds; against the pinned
-			// keys it doesn't.
-			out, code := b.swim("verify", "--levels", "--allow-unsigned")
-			if code != 1 {
-				t.Fatalf("verify of a re-signed chain: exit %d\n%s", code, out)
-			}
-			contains(t, "verify", out, "consistent  yes", "trusted     no", "a key not in trust.yml")
-		}},
-		{"the chain and its signer key replaced: not anchored", "T8", func(t *testing.T) {
-			b := newBoundaryRepo(t)
-			b.mustSwim("keys", "trust")
-			anchor := filepath.Join(t.TempDir(), "audit")
-			b.write("swim.yml", "chain_anchors: [\"file:"+anchor+"\"]\n", 0o644)
-			b.approve(1)
-			b.mustSwim("run", "1", "--plain")
-			contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes", "trusted     yes", "anchored    yes")
-			// Re-signed wholesale, and the entries after the first dropped.
-			b.resign(t)
-			path := chain.Path(b.root)
-			data, _ := os.ReadFile(path)
-			os.WriteFile(path, []byte(strings.SplitAfter(string(data), "\n")[0]), 0o644)
-			out, code := b.swim("verify", "--levels", "--allow-unsigned")
-			if code != 1 {
-				t.Fatalf("verify: exit %d\n%s", code, out)
-			}
-			contains(t, "verify", out, "consistent  yes", "trusted     no", "anchored    no", "chain truncated or replaced after checkpoint")
 		}},
 		{"a planted secret never appears in the log, .swim.log or status", "T9", func(t *testing.T) {
 			r := newRepo(t, "")

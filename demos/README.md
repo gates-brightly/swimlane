@@ -23,7 +23,7 @@ before or after. The scratch repo is kept afterwards in
 | [2-parallel-dag](2-parallel-dag/demo.sh) | A release as a DAG: parallel lanes, a lock, failure, then resuming | 4 min |
 | [3-two-person-approval](3-two-person-approval/demo.sh) | Signed approvals bound to the exact script, from teammates' keys | 5 min |
 | [4-queue-and-handoff](4-queue-and-handoff/demo.sh) | Approve a batch, a worker runs it, the AI catches up from files | 4 min |
-| [6-tamper-evidence](6-tamper-evidence/demo.sh) | `swim verify` catching edited logs, a truncated chain, a swapped key | 4 min |
+| [6-tamper-evidence](6-tamper-evidence/demo.sh) | `swim verify` catching an edited log | 3 min |
 
 For a 15-minute slot: **1**, then **3**, then **6**. That's the story of
 "the AI can't act alone, a change needs two people, and you can prove it
@@ -92,12 +92,8 @@ for teams with big migrations.
   SSH-signed and linked to the hash of the one before.
 - Edit a log to hide a failure: verify says `consistent no` and names the
   entry.
-- Delete the last entries: the shorter chain is still consistent, but the
-  checkpoint already sent to the audit volume catches it (`anchored no`).
-- Add your own key to `trust.yml`: `trusted no`, because the pin lives
-  outside the repo.
-- `swim chain export` hands an auditor a copy they can verify against
-  later, even after the repo is gone.
+- The signatures are `ssh-keygen -Y` signatures, so an auditor can check
+  the chain without swim.
 
 ## Writing another demo
 

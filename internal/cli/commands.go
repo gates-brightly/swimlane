@@ -524,7 +524,6 @@ func runLanes(rest []string, rf runFlags) error {
 		return err
 	}
 	signoffsAfterRun(root, cfg, o.RunID, head)
-	checkpointAfterRun(root, cfg)
 	if code != 0 {
 		return exitError{code}
 	}

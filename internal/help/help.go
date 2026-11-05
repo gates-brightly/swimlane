@@ -836,7 +836,7 @@ swim revoke --auto USER [--key K]
   event; your approval stops counting from then on (approving again adds
   another approve event). A round that already ran keeps its record.
 `,
-	"verify": `swim verify [--strict] [--allow-unsigned] [--levels] [--force] [--trust-pin SHA256] [--against DEST] [--yaml]
+	"verify": `swim verify [--strict] [--allow-unsigned] [--levels] [--force] [--yaml]
 
   Prove the chain of custody (.swim/chain.jsonl). It prints one answer,
   VERIFIED or NOT VERIFIED (exit 1), with what failed or what it couldn't
@@ -845,7 +845,7 @@ swim revoke --auto USER [--key K]
   same) unless --allow-unsigned; ones a later signed entry links to (a
   repo that gained a key later) are a warning, since they can't change
   unseen. BROKEN means something changed; UNAUTHORIZED, an approval that
-  didn't meet lookup.yml (a FLAG=1 override, say), recorded as it happened. Under it are four levels (--levels prints each: yes,
+  didn't meet lookup.yml (a FLAG=1 override, say), recorded as it happened. Under it are two levels (--levels prints each: yes,
   no, partial, n/a, and what it rests on); any one saying no fails:
     consistent  every entry follows the one before it (sequence and
                 previous-hash: a changed, removed or reordered entry breaks
@@ -856,20 +856,8 @@ swim revoke --auto USER [--key K]
                 (.swim/runs/<run>/<N>/, until swim doctor --fix prunes it)
                 still matches the manifest it ran; every signed approval's
                 signatures check out. A chain replaced wholesale and
-                re-signed with a new key is consistent too: that's what
-                trusted is for.
-    trusted     every signature is by a key in trust.yml, as pinned outside
-                the repo (swim keys --help): pinned on first use, or with
-                --trust-pin. partial: some entries are unsigned. n/a: no
-                trust.yml.
-    anchored    the chain still holds the entry every checkpoint at each
-                anchor (chain_anchors) recorded, oldest to newest: entries
-                removed from its end, or a chain replaced or rewritten,
-                after a checkpoint left the machine, fail it, whatever
-                checkpoints were sent since. A checkpoint with a
-                bad signature, or signed by a key outside trust.yml, is
-                ignored with a warning. Says nothing about entries after
-                the checkpoint. n/a: no anchors, or no checkpoint yet.
+                re-signed with another key, or with entries removed from
+                its end, is consistent too.
     authorized  every approval recorded met lookup.yml's rule for its
                 guard: a signed approval's approvers, named by lookup.yml,
                 are enough of the right group; a prompt, flag, -y or queue
@@ -894,13 +882,6 @@ swim revoke --auto USER [--key K]
   or staged copy that doesn't match) is never amended, and a gap that
   appears after the amendment is BROKEN again. swim history shows the
   amend entry.
-  --trust-pin SHA256   check trust.yml against this hash instead of the pin
-                       in ~/.config/swim/trust-pins.yml (CI, which keeps no
-                       pins; swim keys pin prints it). Also SWIM_TRUST_PIN.
-  --against DEST       anchor to DEST (file:/path) instead of
-                       chain_anchors: its checkpoints, and the entries
-                       swim chain export copied there must be the chain's
-                       first ones (so a lost or wiped repo can be checked).
   --yaml               the result as data (schema swim.verify/v1): each
                        level a field of its own (consistent: "yes"), so CI
                        can require any of them; ok is what the exit code says.
@@ -943,8 +924,6 @@ swim revoke --auto USER [--key K]
   swim verify checks the chain.
 `,
 	"chain": `swim chain repair
-swim chain checkpoint [--to DEST]
-swim chain export --to DEST
 
   Look after the chain of custody file itself (.swim/chain.jsonl).
   repair       remove a half-written final entry: a write cut short by a
@@ -957,35 +936,12 @@ swim chain export --to DEST
                SHA-256. Complete entries are never touched; with nothing to
                repair it changes nothing. swim history shows the repair
                entry, and swim verify notes it.
-  checkpoint   sign the chain's head now ({v, seq, head, at, host,
-               runner_key_fp}, with the runner's key) and send it to each
-               chain_anchors destination (and --to DEST). swim run, swim
-               all, swim ci and each swim watch batch do this as they end
-               (not swim run inside a lane). An anchor refuses a checkpoint
-               that doesn't go past its last. A failed send is a warning; the
-               next checkpoint is sent anyway, and swim doctor lists the
-               anchor until then (checkpoint-unsent). Exits 1 when an anchor
-               didn't take it. Also kept in .swim/checkpoints.jsonl, which
-               proves nothing (a lane can rewrite it).
-  export       copy the entries DEST doesn't hold yet, then a checkpoint.
-               What DEST holds must be the chain's first entries, line for
-               line; if the chain lost entries or was replaced since, nothing
-               is written. swim verify --against DEST checks against it.
-  Destinations (chain_anchors in swim.yml or config.yml; they add up):
-    file:/path   a directory outside the repo: checkpoints.jsonl and
-                 chain.jsonl, only ever appended to (put it on another
-                 volume, mounted append-only, or held by someone else)
-  An anchor proves nothing about entries written after its last checkpoint,
-  and someone holding the runner key and write access to every anchor can
-  rewrite everything: keep anchors out of the operator's reach.
 `,
 	"keys": `swim keys
 swim keys add NAME [KEY | FILE.pub]
-swim keys trust [KEY | FILE.pub] [--remove] [--sign] [--key K]
-swim keys pin
 
   Who's who: lookup.yml's users with their key fingerprints, groups (with
-  nested groups expanded), require rules, trust.yml and its pin, and the key
+  nested groups expanded), require rules, and the key
   this machine signs with and whom it maps to.
   add lists a key for NAME in lookup.yml (default: the key this machine
   signs with), creating the file; it keeps the rest, comments included.
@@ -1013,28 +969,6 @@ swim keys pin
   signed: true makes a prompt, FLAG=1, -y or queue approval of the rule's
   guards fail swim verify's authorized level (the guard still accepts it:
   the operator's call at the time, recorded as such).
-
-  trust.yml (repo root, committed) lists the keys swim verify trusts to
-  sign the chain: the runners' and the approvers'. lookup.yml's keys must
-  be among them (swim lint). Its key set's SHA-256 is pinned outside the
-  repo, per repo, in ~/.config/swim/trust-pins.yml: the first swim verify
-  pins it (trust on first use), or swim keys pin. After that a change
-  counts only when signed by a key the pinned set trusts; it's recorded in
-  trust.yml.sig (committed), and each operator's next swim verify moves
-  their pin along. An unsigned change makes verify's trusted level fail
-  until that operator runs swim keys pin again.
-  trust     add KEY (a public key line or a .pub file; default this
-            machine's signing key) to trust.yml, creating it; --remove
-            takes it out. --sign records the change in trust.yml.sig,
-            signed with --key K (default signing_key), a key trust.yml
-            already lists. A key removed this way still verifies what it
-            signed before.
-  pin       pin trust.yml as it is now (after checking its keys), and print
-            the hash for CI (swim verify --trust-pin). Also forgets keys
-            earlier pins kept for what they signed before.
-  The pins file is the operator's: a lane can't change it through the
-  repo, but runs as the same user, so it could write it directly. For a
-  pin a lane can't reach, give CI --trust-pin from its own settings.
 `,
 	"interrupt": `swim interrupt N|JOB
 
@@ -1178,11 +1112,6 @@ swim claim N|RESOURCE --break "<reason>"
     outputs-old (info)        round outputs older than outputs_keep (default
                               14d) that no lane's latest round uses; --fix
                               removes them
-    anchors-none (info)       the repo has a chain but no chain_anchors
-    checkpoint-unsent (warn)  a chain anchor hasn't had the latest checkpoint
-    trust-unpinned (warn/error) trust.yml not pinned on this machine yet
-                              (warn), or changed since the pin with no
-                              signed change (error): swim keys --help
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
                               older than outputs_keep, of no lane's latest
                               round; --fix removes them
@@ -1203,7 +1132,8 @@ swim claim N|RESOURCE --break "<reason>"
                               schedule_tz, observe, modules, secrets,
                               ambient_credentials, secrets_key, headless,
                               hub, pause_warn, store_dir, cache_dir,
-                              cache_max, cache_slug): it's ignored; delete it
+                              cache_max, cache_slug, chain_anchors): it's
+                              ignored; delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key

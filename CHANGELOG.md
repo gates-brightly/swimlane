@@ -57,6 +57,15 @@ history stays here, since `swim changelog --since` reads it.
   cache, as outside swim. `cache_dir`, `cache_max` and `cache_slug` are
   ignored, and `swim doctor` says to delete them. Older chain entries keep their `cache:` restores and
   still verify.
+- **Trust levels and chain anchors.** `trust.yml`, `swim keys trust`,
+  `swim keys pin`, `chain_anchors`, `swim chain checkpoint` and `swim
+  chain export` are gone, and so are `swim verify`'s `trusted` and
+  `anchored` levels and its `--trust-pin` and `--against` flags
+  (`SWIM_TRUST_PIN` too). `swim verify` checks the chain's links and
+  signatures against itself, as `consistent` did. A `chain_anchors` key
+  in swim.yml or config.yml is ignored (`swim doctor` says to delete it),
+  and the doctor checks `anchors-none`, `checkpoint-unsent` and
+  `trust-unpinned` and the lint check `trust` are gone.
 
 ### Changed
 

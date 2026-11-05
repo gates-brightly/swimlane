@@ -196,7 +196,7 @@ func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) (ru
 				bad[n], found = true, true
 			}
 		}
-		// What isn't one lane's script (lookup.yml, trust.yml), and an env
+		// What isn't one lane's script (lookup.yml), and an env
 		// file that would approve a guard, stop the whole run: approvals
 		// never come from a file.
 		if !found || runWideCodes[f.Code] {

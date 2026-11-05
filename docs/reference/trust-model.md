@@ -20,8 +20,7 @@ file), use their ssh-agent, change its own
 environment and write `.swim/`. Nothing below confines a hostile lane: it
 can skip its guards and write records. What swim offers against that is
 mostly detection: the run attestation and `swim verify` show an approval
-swim run didn't record, and anchors show a history changed after it was
-checkpointed. The one thing swim keeps from lanes is
+swim run didn't record. The one thing swim keeps from lanes is
 [signing](#the-runner-key): swim run signs with a key a lane never gets,
 and with a runner key that asks you for each use, a lane can't sign an
 entry `swim verify` trusts without you being asked. Real confinement needs
@@ -35,7 +34,7 @@ credentials the lane never sees. swim doesn't do that.
 | **Planner** (the AI session) and **workers** (its subagents) | Write lane scripts, queue batches, read logs back. | Nothing from swim. They don't need cloud credentials, VPN or approval keys. If the AI runs as your OS user on your machine, it can reach whatever that user can: keeping your credentials from it is up to you (a separate user, a container). |
 | **Operator** | Runs `swim run` / `swim all`, answers prompts, sets guard flags. | Their shell's environment (cloud profiles, tokens). Lanes run as the operator and inherit it. |
 | **Swimmer** (`swim watch`) | Runs queued batches once their lanes are free, each in a process of its own. | Its own environment's credentials. Its environment never approves a guard: only the batch's approvals count. |
-| **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Vouches for each `swim run`'s run key, once per run, and signs what swim records outside a run (`swim approve`'s grants, checkpoints). | An SSH key on the operator's or swimmer's machine: a file, in ssh-agent, or on a security key ([below](#the-runner-key)). |
+| **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Vouches for each `swim run`'s run key, once per run, and signs what swim records outside a run (`swim approve`'s grants). | An SSH key on the operator's or swimmer's machine: a file, in ssh-agent, or on a security key ([below](#the-runner-key)). |
 | **Run key** | Signs every chain entry of one `swim run`, the lanes' rounds included. | Only the launcher's memory, for the run. Never on disk, in a lane's environment or a descriptor a lane inherits. |
 | **Approvers** | Sign approvals of exact scripts, or standing approvals, with `swim approve`. | Their own SSH keys. Their public keys are in the committed `lookup.yml`. |
 
@@ -253,8 +252,7 @@ runner key that asks for each use, not without asking you.*
 - **`swim verify` checks the delegation.** consistent: each run-key
   signature, and the runner key's signature over the delegation, and that
   the delegation names the key that signed; a delegation copied onto
-  another key breaks. trusted, `swim history` and the `lookup.yml`
-  listing judge an entry by the runner key that vouched for it. Both
+  another key breaks. `swim history` and the `lookup.yml` listing judge an entry by the runner key that vouched for it. Both
   signatures check with plain `ssh-keygen -Y verify`.
 
 What's left is the runner key itself. A lane runs as you, so it can use
@@ -272,8 +270,7 @@ Removing `SSH_AUTH_SOCK` from a lane's environment wouldn't change this
 (a process running as you can find the agent's socket) and would break
 lanes that use ssh, so swim leaves it. Keep the runner key off disk and
 behind a question: an agent with `ssh-add -c` or a security key. Then
-swim run asks once per run (plus once for the checkpoint when
-`chain_anchors` is set), and a lane can only get a signature by asking
+swim run asks once per run, and a lane can only get a signature by asking
 you. A file key keeps working, as the weaker mode.
 
 If the runner key won't vouch for a run key (you said no, no touch, a
@@ -287,13 +284,13 @@ What this doesn't cover: a round entry's contents (its result, its log's
 hash) are what the lane reports, signed by the launcher; a lane can call
 `swim _finish` early to report first. The attestation checks what each
 lane ran, not how it ended. Commands you run yourself (`swim approve`,
-`swim chain checkpoint`) sign with the runner key directly,
+`swim verify --force`) sign with the runner key directly,
 as does swim run ending the round of a lane a dead run left behind, and
 so does a lane that runs them, if it can reach the key.
 
 **What `swim verify` proves, and what it doesn't.** It prints one answer,
 VERIFIED or NOT VERIFIED (exit 1), and what it couldn't check. It fails
-when any of four levels fails or any entry is unsigned; `--levels` shows
+when either of two levels fails or any entry is unsigned; `--levels` shows
 each level, and `--yaml` gives each its own field:
 
 - **consistent:** every link, every signature against the key recorded
@@ -304,24 +301,9 @@ each level, and `--yaml` gives each its own field:
   ran, is a break. Runs that share an id (`--run-id`) each attest their own
   lanes. Runs without an attestation (lanes run directly with bash, runs from
   before attestations, a `swim run` that didn't finish) are noted. A chain
-  replaced wholesale and re-signed with another key is consistent too.
-- **trusted:** every signature is by a key in `trust.yml` (committed),
-  whose key set is pinned outside the repo: in the operator's
-  `~/.config/swim/trust-pins.yml` on first use or by `swim keys pin`, or by
-  hash in CI (`--trust-pin`, `SWIM_TRUST_PIN`). A change to `trust.yml`
-  counts only when signed by a key the pinned set trusts (`swim keys trust
-  --sign`, recorded in `trust.yml.sig`); a hand edit fails the level.
-  `lookup.yml`'s keys must be in `trust.yml` (`swim lint`).
-- **anchored:** the chain still holds the entry every checkpoint at each
-  anchor recorded, the oldest as well as the newest: a chain rewritten,
-  re-signed, padded past the last checkpoint and checkpointed again still
-  fails every checkpoint taken before the rewrite. (An anchor checks only
-  that a new checkpoint's seq goes up; it can't see the chain. Anyone who
-  can write to it can add one, but not remove the old ones.) A checkpoint (seq, head hash, time, host, signed by
-  the runner) goes to each `chain_anchors` destination (`file:/path`
-  outside the repo) at the end of every top-level run, CI job
-  and watch batch. `swim chain export` also copies the entries, and `swim
-  verify --against DEST` checks against them.
+  replaced wholesale and re-signed with another key, or with entries
+  removed from its end, is consistent too: nothing outside the machine
+  holds a copy to check it against.
 - **authorized:** each approve entry met `lookup.yml`'s rule for its guard,
   under the `lookup.yml` it recorded (`lookup_sha256`). Answers an older
   swim recorded as signed through the hub count like signed approvals (and
@@ -331,24 +313,12 @@ each level, and `--yaml` gives each its own field:
 
 What each level can't catch:
 
-- **trusted** rests on the pin. A lane runs as the operator, so it could
-  write `~/.config/swim/trust-pins.yml` directly (not through the repo). A
-  pin a lane can't reach is one CI passes from its own settings
-  (`--trust-pin`). Trust on first use trusts whatever `trust.yml` says the
-  first time; check it, or pin it explicitly.
-- **anchored** proves nothing about entries written after the last
-  checkpoint, and someone holding the runner key **and** write access to
-  every anchor can rewrite everything. Anchors should be held by someone
-  other than the operator: another volume mounted append-only, or one
-  someone else holds. Without an anchor, entries removed from the end of the
-  chain can't be told from a shorter history (`anchored: n/a`, which
-  `--strict` fails).
 - **authorized** checks the rules, not the people: a prompt, `FLAG=1`, `-y`
   or queue approval meets any rule except one marked `signed: true`.
 - None of them proves the scripts were safe.
 
-`.swim/chain.jsonl` isn't committed; with an anchor, a copy lives outside
-the machine that ran the rounds (`swim chain export`).
+`.swim/chain.jsonl` isn't committed: it lives on the machine that ran the
+rounds, with the scripts they ran in `.swim/scripts/`.
 
 ## Bypasses, and how each is recorded
 
@@ -381,8 +351,8 @@ summary with a warning annotation. Guards approved by a flag
   VM.
 - **An AI that shares your OS user.** swim gives the planner nothing, but it
   doesn't stop a process running as you from using what you have.
-- **Tampering by whoever holds the runner key and can write every anchor,**
-  and anything written after the last checkpoint (above). Lanes run as
+- **Tampering by whoever holds the runner key,** or can rewrite the chain
+  wholesale or cut it short (above). Lanes run as
   the operator, so a lane can use the runner key wherever you can without
   being asked ([a file, an agent without `ssh-add -c`](#the-runner-key)):
   what it signs then is detectable through the run attestation
@@ -399,7 +369,7 @@ Test files are under `internal/`. "Pending" names the task in
 | `FLAG=1` approves, `FLAG=0` declines without asking, and a prompt answer is logged with who gave it. | `TestGuardAsksForApproval` (e2e/approval_test.go) |
 | A stopping lane, or a round whose `Timeout` ran out, declines. | `TestApprovalGivesUpWhenStopped` (e2e/approval_test.go), `TestClientGivesUp` (approval) |
 | A stopping run declines the question being asked and every later one. | `TestCancelDeclines` (approval) |
-| An unreachable approval socket declines. | `TestGuardDeclinesOnSocketError` (e2e/trust_test.go) |
+| An unreachable approval socket declines. | `TestGuardDeclinesOnSocketError` (e2e/approval_test.go) |
 | `-y` approves only unset guards, and is logged as `-y`. | `TestAutoApprove` (e2e/approval_test.go) |
 | An env file can't approve a guard. | `TestEnvFileGuardFlagRefused` (e2e/envfile_test.go) |
 | Signed approvals must meet `lookup.yml`'s rule; an unknown key doesn't count; a revoked approval stops counting. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
@@ -427,15 +397,11 @@ Test files are under `internal/`. "Pending" names the task in
 | Every approval is recorded with its method and signed by the runner; the scripts that ran are kept; `signing: required` refuses without a key; `--strict` fails on unsigned entries. | `TestChainRecordsEveryApproval` (e2e/custody_test.go) |
 | Under `swim run`, every entry is signed by a run key the runner key vouched for once; a lane has no runner key file to read, its own try at the agent is put to the operator (who says no), and on Linux it can't read the launcher's memory; `swim verify` trusts the run. When the runner key won't vouch for a run key, `signing: required` stops the run before a lane starts and `auto` records it unsigned, asking once. | `TestRunKeyKeepsSigningFromLanes` (e2e/runkey_test.go); skipped while flaky ([T34](../../dev/tasks/T34-runkey-test-flake.md)) |
 | The launcher signs only a lane's own round or check entry, once per lane process, under its own lane, job, run and manifest; any other kind is refused, and so is a token used from outside its lane. | `TestLaneEntry` (launcher), `TestRecordFromTheLane` (approval) |
-| A run key's signature checks with plain `ssh-keygen`; its delegation holds only for its run, key and runner key; a delegation copied onto another key breaks consistent, and one by a key outside the trusted set fails trusted. | `TestRunKey` (sign), `TestRunKeyEntries` (chain) |
+| A run key's signature checks with plain `ssh-keygen`; its delegation holds only for its run, key and runner key; a delegation copied onto another key breaks consistent. | `TestRunKey` (sign), `TestRunKeyEntries` (chain) |
 | `swim doctor` warns when the runner key is a file with no passphrase, and notes a key in ssh-agent. | `TestSigningKey` (doctor) |
 | Entries signed with an old runner key still verify. | `TestRecoveryLostRunnerKey` (e2e/recovery_test.go) |
 | A repo's `blocked_commands` are refused in the script and at the step; git itself is not blocked. | `TestBlockedCommands` (e2e/e2e_test.go) |
-| A chain re-signed wholesale with a new key is consistent but not trusted; with an anchor, not anchored either. | `TestTrustCatchesWholesaleReplacement` (chain), `TestSecurity` (e2e/security_test.go) |
-| A `trust.yml` edit counts only when signed by a pinned key; trust is pinned on first use, or by hash in CI. | `TestTrustPinTransitions` (trust), `TestVerifyTrustedLevel` (e2e/verifylevels_test.go) |
-| A chain truncated below a checkpoint, or replaced, fails `anchored`; a tampered checkpoint fails its signature. | `TestCheckpointCatchesTruncationAndReplacement` (chain), `TestVerifyAnchoredLevel` (e2e/verifylevels_test.go) |
-| Anchors only go forward: a file anchor refuses a diverged export. | `TestFileAnchorAppendsOnly` (anchor) |
-| An approval that didn't meet its `lookup.yml` rule fails `authorized`. | `TestVerifyAuthorizedLevel` (e2e/verifylevels_test.go) |
+| An approval that didn't meet its `lookup.yml` rule fails `authorized`. | `TestVerifyAuthorizedLevel` (e2e/verify_test.go) |
 | `status.yml`, queue entries, approvals files and kept scripts are replaced atomically and synced to disk with their directory; chain appends are synced. | `TestStateWritesAreDurable`, `TestWriteAtomic` (fsutil) |
 | Of several processes claiming one lane at once, exactly one wins; a pid reused by another process doesn't hold a lane. | `TestClaimRace`, `TestRunningChecksStartTime` (lane) |
 | A lane killed mid-step is never reported passed nor rerun on its own: the next `swim run` or `swim watch` records the round as interrupted, in the log and the chain. | `TestReapDeadLane` (e2e/recovery_test.go), `TestReapDead` (launcher) |

@@ -495,20 +495,15 @@ func listApprovals(root string, cfg *config.Config, lk *lookup.Lookup) error {
 	return nil
 }
 
-// cmdKeys shows who's who: lookup.yml's users, keys and groups, trust.yml
-// and its pin, and the key this machine signs with. swim keys pin and
-// swim keys trust look after trust.yml (trustcmd.go).
+// cmdKeys shows who's who: lookup.yml's users, keys and groups, and the
+// key this machine signs with.
 func cmdKeys(args []string) error {
 	if len(args) > 0 {
 		switch args[0] {
-		case "pin":
-			return keysPin(args[1:])
-		case "trust":
-			return keysTrust(args[1:])
 		case "add":
 			return keysAdd(args[1:])
 		}
-		return usagef("usage: swim keys [add NAME [KEY] | pin | trust KEY [--remove] [--sign] [--key K]]")
+		return usagef("usage: swim keys [add NAME [KEY]]")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -559,7 +554,6 @@ func cmdKeys(args []string) error {
 			}
 		}
 	}
-	fmt.Println(trustLine(root))
 	if k, err := sign.LoadKey(cfg.SigningKey); err == nil {
 		who := "not in lookup.yml"
 		if u, ok := lk.Who(k.Public); ok {

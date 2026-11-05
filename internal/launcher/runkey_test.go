@@ -65,7 +65,4 @@ func TestLaneEntry(t *testing.T) {
 	if problems, unsigned := chain.Check(links); len(problems) != 0 || len(unsigned) != 0 {
 		t.Errorf("check: %+v %v", problems, unsigned)
 	}
-	if bad := chain.Trust(links, func(pub string) bool { return sign.KeyOnly(pub) == sign.KeyOnly(long.Public) }); len(bad) != 0 {
-		t.Errorf("the runner key doesn't vouch for its run key: %+v", bad)
-	}
 }

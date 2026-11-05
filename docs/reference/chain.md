@@ -16,9 +16,6 @@ entry per line, each holding the SHA-256 of the line before it.
 swim verify                 # in levels, one line each (exit 1 if one says no; --yaml for CI)
 swim history [--oneline]    # the chain, newest first, like git log
 swim chain repair           # after a crash cut a write short
-swim chain checkpoint       # send the signed head to chain_anchors now
-swim chain export --to file:/mnt/audit/orders
-swim keys [trust KEY --sign | pin]
 ```
 
 ## Signing
@@ -41,18 +38,14 @@ ran are kept by hash in `.swim/scripts/`, staged copies in `.swim/runs/`.
 
 ```
 consistent  yes  418 entries, links and signatures match; logs, scripts and approvals as recorded
-trusted     yes  2 signers, all in trust.yml (pinned 2026-09-30)
-anchored    yes  extends checkpoint seq 412 (2026-10-14T09:12:00Z) from file:/mnt/audit/orders; 6 entries since
 authorized  yes  31 approvals, each met its lookup.yml rule
 ```
 
 | | |
 |---|---|
 | **consistent** | Links, signatures, logs, kept scripts, staged copies and approvals match what's recorded. Any edit, removal or reordering fails it. |
-| **trusted** | Every signer is in `trust.yml` (committed), whose key set is pinned outside the repo (`~/.config/swim/trust-pins.yml` on first use or `swim keys pin`; CI: `--trust-pin`). A change counts only when a trusted key signs it. A chain re-signed with a new key fails here. |
-| **anchored** | The chain still holds every checkpoint sent to `chain_anchors` (`file:` paths outside the repo; every run, `swim ci` and watch batch sends one). Truncation or replacement after a checkpoint left the machine fails here. `--against DEST` checks an exported copy. |
 | **authorized** | Each approval met `lookup.yml`'s rule for its guard. |
 
-An anchor proves nothing about entries after its last checkpoint, and
-whoever holds the runner key and can write every anchor can rewrite
-everything: keep anchors out of the operator's reach.
+A chain replaced wholesale and re-signed with another key, or cut short
+at its end, is still consistent: the chain proves what happened to whoever
+trusts the machine that keeps it, not to an outside auditor.

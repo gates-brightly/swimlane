@@ -22,7 +22,7 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `checkpoint [ls\|rm]` | The steps the next run keeps. |
 | **Guards** | |
 | `approve` / `revoke` | Signed approvals. See [guards](guards.md). |
-| `keys` | Who's who: `lookup.yml`, `trust.yml` and its pin. |
+| `keys` | Who's who: `lookup.yml`. |
 | **Logs and the record** | |
 | `status [N]` | Every lane's state; each pending lane's dependencies and guards. |
 | `log [N\|JOB\|RUN]` | A lane's log, or the project log. See [logs](logs.md). |

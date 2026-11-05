@@ -22,7 +22,7 @@ import (
 // A signoff is the launcher's signed word that a lane, as committed,
 // passed on a commit's tree (# Signoff: CONTEXT): run here instead of in
 // CI, and posted as a GitHub commit status that branch protection can
-// require. Like a chain checkpoint, swim does it after the round, with the
+// require. swim does it after the round, with the
 // credentials of whoever runs the launcher; the lane only declares it. It's an
 // attestation, not a proof: it shows whose key vouches, not that the
 // round ran honestly.

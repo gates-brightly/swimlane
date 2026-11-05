@@ -30,7 +30,6 @@ defaults:
   approvals: prompt                # prompt | flags: may a guard ask
   signing: auto                    # auto | required | off
   signing_key: ~/.ssh/id_ed25519   # a .pub signs through ssh-agent
-  chain_anchors: ["file:/mnt/audit/orders"]
   msg_log_interval: 10s            # at most one MSG log line per lane per this
   outputs_keep: 14d                # swim doctor --fix prunes older unused outputs
   queue_lease: 2m                  # a swimmer's heartbeat, seen from other hosts
@@ -58,7 +57,6 @@ in [env files](env.md), not config. There is no lane count.
 | `lane.N.yml` | A lane's header as YAML ([other languages](other-languages.md#header)). | With its script. |
 | `swim.yml` | The repo's shared settings. | Yes |
 | `lookup.yml` | Users, keys, groups, approval rules. | Yes |
-| `trust.yml` | The keys `swim verify` trusts. | Yes |
 | `approvals/` | Signed approvals. | Yes |
 | `.swim.lock` | The repo's [syntax versions](compatibility.md#syntax-versions-and-the-lock). Never edit it to get past a mismatch. | Yes |
 | `.swim.log` | The project log. | No (or yes, to keep history) |
