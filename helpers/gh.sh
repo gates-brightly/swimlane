@@ -8,8 +8,9 @@
 #   gh_pr_fetch 482
 #
 # Every function is gh_<name>. # Includes: pins the file with the lane, so
-# approving the lane approves it as it is. Each command runs through gate
-# or snapshot, so the log records it. Nothing here changes anything but the
+# approving the lane approves it as it is. The gates run their checks
+# through swim _helper (the check is swim's own code, as gate is); the log
+# shows the call and what the check found. Nothing here changes anything but the
 # repo's own git refs; destructive work stays in the lane, behind its own
 # guard (lint doesn't read this file). bash 3.2 and BSD tools (macOS).
 
@@ -50,17 +51,13 @@ gh_actions() {
 # gh_actions_gate: a gate that this is a GitHub Actions runner. The log
 # shows the runner, repository, run and commit.
 gh_actions_gate() {
-  gate --helper "gh_actions_gate" "GitHub Actions runner" bash -c '[ "${GITHUB_ACTIONS:-}" = true ] || { echo "not a GitHub Actions runner (GITHUB_ACTIONS is not true)"; exit 1; }; echo "runner ${RUNNER_NAME:-?} (${RUNNER_OS:-?}): ${GITHUB_REPOSITORY:-?} run ${GITHUB_RUN_ID:-?} at ${GITHUB_SHA:-?}"'
+  gate --helper "gh_actions_gate${*:+ $*}" "GitHub Actions runner" "${SWIM_BIN:-swim}" _helper gh_actions_gate "$@"
 }
 
 # gh_auth_gate [LOGIN]: a gate that gh is signed in, and with LOGIN, as
 # that user. The log shows who.
 gh_auth_gate() {
-  if [ -z "${1:-}" ]; then
-    gate --helper "gh_auth_gate" --timeout 30s "gh is signed in" gh auth status
-    return
-  fi
-  gate --helper "gh_auth_gate $1" --timeout 30s "gh is signed in as $1" bash -c 'got=$(gh api user --jq .login) || exit 1; echo "signed in as $got"; [ "$got" = "$1" ] || { echo "want $1"; exit 1; }' _ "$1"
+  gate --helper "gh_auth_gate${*:+ $*}" --timeout 30s "gh is signed in${1:+ as $1}" "${SWIM_BIN:-swim}" _helper gh_auth_gate "$@"
 }
 
 # gh_repo [REMOTE]: set REPO to the GitHub owner/name REMOTE (default
@@ -95,36 +92,13 @@ _gh_need_repo() {
 # states (OPEN, MERGED, CLOSED, or DRAFT for an open draft). The log shows
 # its state, head commit and review decision.
 gh_pr_state_gate() {
-  _gh_pr=${1:-}
-  case $_gh_pr in
-    '' | *[!0-9]*)
-      _gh_fail "gh_pr_state_gate: a PR number" "gh_pr_state_gate needs a pull request number, got '$_gh_pr'"
-      return 1
-      ;;
-  esac
-  shift
-  if [ $# -eq 0 ]; then
-    _gh_fail "gh_pr_state_gate: a state" "gh_pr_state_gate $_gh_pr needs the states it may be in (OPEN, MERGED, CLOSED, DRAFT)"
-    return 1
-  fi
   _gh_need_repo || return 1
-  _gh_jq='[(if .isDraft then "DRAFT" else .state end), .headRefOid, (.reviewDecision // "")] | join(" ")'
-  gate --helper "gh_pr_state_gate $_gh_pr $*" --timeout 1m "PR $_gh_pr is $*" bash -c 'pr=$1 repo=$2 jq=$3; shift 3; got=$(gh pr view "$pr" --repo "$repo" --json state,isDraft,headRefOid,reviewDecision --jq "$jq") || exit 1; echo "PR $pr in $repo: $got"; for want in "$@"; do [ "${got%% *}" = "$want" ] && exit 0; done; echo "want $*"; exit 1' _ "$_gh_pr" "$REPO" "$_gh_jq" "$@"
+  gate --helper "gh_pr_state_gate${*:+ $*}" --timeout 1m "PR ${1:-?} is ${*:2}" "${SWIM_BIN:-swim}" _helper gh_pr_state_gate --repo "$REPO" "$@"
 }
 
 # gh_pr_head_gate N SHA: a gate that pull request N's head is still SHA
 # (what was reviewed or tested is what the PR holds).
 gh_pr_head_gate() {
-  case ${1:-} in
-    '' | *[!0-9]*)
-      _gh_fail "gh_pr_head_gate: a PR number" "gh_pr_head_gate needs a pull request number, got '${1:-}'"
-      return 1
-      ;;
-  esac
-  if [ -z "${2:-}" ]; then
-    _gh_fail "gh_pr_head_gate: a commit" "gh_pr_head_gate $1 needs the commit it should be at"
-    return 1
-  fi
   _gh_need_repo || return 1
-  gate --helper "gh_pr_head_gate $1 $2" --timeout 1m "PR $1 is at $2" bash -c 'got=$(gh pr view "$1" --repo "$2" --json headRefOid --jq .headRefOid) || exit 1; echo "PR $1 head: $got"; case $got in "$3"*) exit 0 ;; esac; echo "want $3"; exit 1' _ "$1" "$REPO" "$2"
+  gate --helper "gh_pr_head_gate${*:+ $*}" --timeout 1m "PR ${1:-?} is at ${2:-?}" "${SWIM_BIN:-swim}" _helper gh_pr_head_gate --repo "$REPO" "$@"
 }

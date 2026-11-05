@@ -38,6 +38,17 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Changed
+
+- **Helper gates are swim's own Go:** each gate's function is one line of
+  bash that runs its check as `swim _helper FUNC ARGS...` (`tool_gate`,
+  `aws_gate`, `docker_gate`, `os_*_gate`, `gh_auth_gate`,
+  `gh_actions_gate`, `gh_pr_state_gate`, `gh_pr_head_gate`,
+  `git_worktree`, `git_pushed_gate`, `git_authors_gate`), in place of a
+  quoted `bash -c` one-liner. The checks are tested in Go, and a copy
+  reads as which check runs, with what. `aws_gate` checks for a 12-digit
+  account id. Run `swim helpers add` for your modules to update copies.
+
 ### Added
 
 - **`swim helpers stats`:** what the lane logs say about helpers, every

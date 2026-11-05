@@ -126,8 +126,14 @@ rest: `swim helpers add` again updates a copy, and `swim lint` says when
 an included copy was edited since (`helpers`, a warning), or this swim
 ships a different version (info). A repo's own module (`lith_` for its dev
 stack, say) is a file like these without the stamp. Helpers change at most the repo's own
-git state (refs, a new worktree), and run every command through `step`,
-`gate` or `snapshot`, so the log has it. A destructive step stays in the
+git state (refs, a new worktree), and run everything through `step`,
+`gate` or `snapshot`, so the log has it. A gate's function is one line of
+bash that runs its check as `swim _helper FUNC ARGS...`: the check is
+swim's own Go, tested with swim and pinned by its version as `gate` is,
+and what a lane approves in the copy is which check runs, with what. The
+commands a check runs (`aws`, `gh`, `git`) aren't on the command line, so
+`blocked_commands` doesn't see them; none of them change anything outside
+the repo's git state. A destructive step stays in the
 lane behind its own guard: lint reads the lane, not the files it
 includes, for guards and for bash 3.2.
 

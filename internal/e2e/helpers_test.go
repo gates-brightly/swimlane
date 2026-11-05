@@ -302,7 +302,7 @@ func TestHelperProvenance(t *testing.T) {
 	data, _ := os.ReadFile(f)
 	os.WriteFile(f, append(data, "# edited\n"...), 0o644)
 	r.mustSwim("run", "1", "--plain")
-	contains(t, "edited", r.mustSwim("log", "1"), "$ bash -c", "os edited since swim helpers add wrote it: shown in full")
+	contains(t, "edited", r.mustSwim("log", "1"), "swim _helper os_"+here+"_gate\n", "os edited since swim helpers add wrote it: shown in full")
 
 	// The repo's own module (no stamp), with a function of the same name.
 	os.WriteFile(filepath.Join(r.root, "lib/mine.sh"), []byte("os_"+here+"_gate() { gate --helper \"os_"+here+"_gate\" \"mine\" true; }\n"), 0o644)

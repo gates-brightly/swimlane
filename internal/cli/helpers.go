@@ -266,3 +266,15 @@ func helperStep(call, file string) (shown, line string) {
 	}
 	return "", fmt.Sprintf("%s, %s, not a swim helpers copy: shown in full", fn, file)
 }
+
+// cmdHelperCheck is swim _helper FUNC ARGS...: the check a module's
+// function runs under gate (helpers.Run), its exit code the gate's.
+func cmdHelperCheck(args []string) error {
+	if len(args) == 0 {
+		return usagef("usage: swim _helper FUNC [ARGS...]")
+	}
+	if code := helpers.Run(args[0], args[1:], os.Stdout); code != 0 {
+		return exitError{code}
+	}
+	return nil
+}
