@@ -16,7 +16,7 @@ import (
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "signing", "signing_key", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "signing", "signing_key", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command", "phone", "phone_expiry"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -45,6 +45,10 @@ func (c *Config) Get(key string) (string, error) {
 		return c.NotifyURL, nil
 	case "notify_command":
 		return c.NotifyCommand, nil
+	case "phone":
+		return c.Phone, nil
+	case "phone_expiry":
+		return c.PhoneExpiryFor().String(), nil
 	case "interrupt_grace", "term_grace":
 		ig, tg := c.Graces()
 		if key == "term_grace" {
@@ -132,6 +136,18 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.TrimSpace(value)
 		if v == "" {
 			return nil, fmt.Errorf(`notify_command needs a command, e.g. curl -s -H "Title: $SWIM_TITLE" -d "$SWIM_BODY" https://ntfy.sh/TOPIC`)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "phone":
+		v := strings.TrimSpace(value)
+		if v == "" || strings.ContainsAny(v, " \t/") {
+			return nil, fmt.Errorf("phone needs the phone's tailnet name or IP, e.g. zachs-iphone or 100.101.102.103, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "phone_expiry":
+		v := strings.TrimSpace(value)
+		if d, err := time.ParseDuration(v); err != nil || d < time.Minute {
+			return nil, fmt.Errorf("phone_expiry must be a duration of 1m or more, like 15m, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "interrupt_grace", "term_grace":
@@ -454,6 +470,10 @@ func Hint(key string) string {
 		return "URL: https://ntfy.sh/TOPIC"
 	case "notify_command":
 		return "shell command (instead of notify_url)"
+	case "phone":
+		return "tailnet device: zachs-iphone, 100.x.y.z"
+	case "phone_expiry":
+		return "duration, 1m or more"
 	}
 	return ""
 }

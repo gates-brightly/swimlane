@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestHook(t *testing.T) {
@@ -73,6 +74,27 @@ func TestHookURL(t *testing.T) {
 	}
 	if s, err := LastSent(state); err != nil || s == nil || s.Error != "" || s.Title != "infra · lane 3 needs you" || s.Event != EventAsk {
 		t.Errorf("recorded %+v, %v", s, err)
+	}
+	if a := r.Header.Get("Actions"); a != "" {
+		t.Errorf("Actions without phone links: %q", a)
+	}
+
+	// A question with phone links: Approve and Decline buttons, each a POST
+	// from the ntfy app, and when they stop working.
+	expires := time.Date(2026, 11, 9, 14, 17, 0, 0, time.UTC)
+	h.SendNow(Note{Event: EventAsk, Title: "t", Body: "b", ApproveURL: "http://100.64.0.1:4242/approve/aa",
+		RejectURL: "http://100.64.0.1:4242/reject/bb", Expires: expires})
+	mu.Lock()
+	r = got
+	mu.Unlock()
+	if a, want := r.Header.Get("Actions"), "http, Approve, http://100.64.0.1:4242/approve/aa, method=POST, clear=true; http, Decline, http://100.64.0.1:4242/reject/bb, method=POST, clear=true"; a != want {
+		t.Errorf("Actions = %q, want %q", a, want)
+	}
+	env := strings.Join(Note{ApproveURL: "a", RejectURL: "r", Expires: expires}.env("/", ""), "\n")
+	for _, want := range []string{"SWIM_APPROVE_URL=a", "SWIM_REJECT_URL=r", "SWIM_EXPIRES=2026-11-09T14:17:00Z"} {
+		if !strings.Contains(env, want) {
+			t.Errorf("env lacks %s:\n%s", want, env)
+		}
 	}
 
 	h = NewHook(HookConfig{URL: srv.URL + "/denied", Root: t.TempDir(), State: state})

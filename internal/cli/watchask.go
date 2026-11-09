@@ -45,6 +45,7 @@ type askMsg struct {
 	Approved bool     `json:"approved,omitempty"`
 	By       string   `json:"by,omitempty"`
 	Why      string   `json:"why,omitempty"`
+	Via      string   `json:"via,omitempty"` // answered on the phone: "phone zachs-iphone"
 }
 
 // askClient is the batch's end: an approval.Asker that waits for the
@@ -123,7 +124,7 @@ func (c *askClient) ask(req approval.Request, cancel <-chan struct{}) approval.R
 	}
 	select {
 	case m := <-ch:
-		return approval.Response{Approved: m.Approved, By: m.By, Why: m.Why, Dry: m.Why == askGone}
+		return approval.Response{Approved: m.Approved, By: m.By, Why: m.Why, Via: m.Via, Dry: m.Why == askGone}
 	case <-cancel:
 		c.mu.Lock()
 		delete(c.waiting, id)
@@ -166,6 +167,11 @@ type watchAsk struct {
 	msg   askMsg
 	since time.Time
 	reply func(askMsg)
+	// The question's phone links (watchphone.go), when phone answers are
+	// on: a token that approves, one that declines, each good once and
+	// until expires.
+	approveTok, rejectTok string
+	expires               time.Time
 }
 
 // watchAsks are the questions waiting at swim watch's screen, oldest
@@ -181,6 +187,8 @@ type watchAsks struct {
 	// changed, if set, is called when a question comes or goes (tests
 	// wait on it).
 	changed func()
+	// phone, if set, gives each question its phone links.
+	phone *phoneAnswers
 }
 
 func (a *watchAsks) notify() {
@@ -238,6 +246,7 @@ func (a *watchAsks) serve(e *queue.Entry, conn net.Conn) {
 					enc.Encode(r)
 					wmu.Unlock()
 				}}
+			a.phone.issue(q)
 			a.mu.Lock()
 			a.list = append(a.list, q)
 			a.added++

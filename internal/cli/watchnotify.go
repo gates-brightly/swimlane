@@ -80,7 +80,14 @@ func (n *watchNotes) asked(q watchAsk) {
 	title := n.from.Title(fmt.Sprintf("lane %d needs you", q.msg.Lane))
 	body := fmt.Sprintf("%s: %s · batch #%d", what, approval.Clean(q.msg.Desc), q.seq)
 	n.t.Notify(title, body)
-	n.hook.Send(n.from.Note(notify.Note{Event: notify.EventAsk, Title: title, Body: body, Lanes: []int{q.msg.Lane}, Batch: q.seq}))
+	note := notify.Note{Event: notify.EventAsk, Title: title, Body: body, Lanes: []int{q.msg.Lane}, Batch: q.seq}
+	if n.asks != nil {
+		if note.ApproveURL, note.RejectURL = n.asks.phone.links(q); note.ApproveURL != "" {
+			note.Expires = q.expires
+			note.Body += " · the links work until " + q.expires.Format("15:04")
+		}
+	}
+	n.hook.Send(n.from.Note(note))
 	n.progress()
 }
 

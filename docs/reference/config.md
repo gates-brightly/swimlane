@@ -47,6 +47,8 @@ defaults:
   notify: false                    # notifications and a tab progress bar
   notify_url: https://ntfy.sh/TOPIC   # notifications to ntfy, terminal or not
   notify_command: ./my-notifier.sh    # or run this instead
+  phone: zachs-iphone              # tailnet device whose taps answer swim watch's questions
+  phone_expiry: 15m                # how long a question's phone links work
   runners: {ts: tsx}               # saved when swim asks
 repos:
   swimlane:                        # this repo, every branch and worktree

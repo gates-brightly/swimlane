@@ -38,6 +38,27 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+**What changed for you**
+
+- `phone: <tailnet device>`: answer `swim watch`'s questions from your phone with one tap.
+
+### Added
+
+- **Phone answers:** with `phone` set to your phone's Tailscale name or
+  address, each question `swim watch` asks carries two links in its
+  notification: one approves, one declines. With `notify_url` they are
+  ntfy's Approve and Decline buttons; `notify_command` gets them as
+  `SWIM_APPROVE_URL` and `SWIM_REJECT_URL`. A tap answers the question the
+  way `y` or `n` does. swim watch serves the links on this machine's
+  tailnet address alone, and takes a tap only from the phone's address, so
+  a link that leaks (ntfy's cache, a lane on this machine) answers nothing.
+  Each link has its own random token. It works once and stops working
+  `phone_expiry` (default 15m) after the question was asked, or as soon as
+  the question is answered anywhere. Tokens live in `swim watch`'s memory
+  only, never in `.swim/` or `.swim.log`. An approval from the phone is
+  recorded with method `phone` (`approved by zach on phone zachs-iphone`).
+  Needs the watch screen and `watch_batches` 2 or more (the default 4).
+
 ## 0.20261105.9 (v0.20261105.9, 2026-11-05)
 
 ### Added

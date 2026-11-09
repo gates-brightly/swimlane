@@ -227,14 +227,21 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	by := or(resp.By, operator())
 	how := "approved at the prompt by " + by
 	method := "prompt"
-	if resp.Pre {
+	switch {
+	case resp.Pre:
 		how, method = "pre-approved by "+by+" at "+resp.At+" in the live view", "preapproved"
+	case resp.Via != "":
+		how, method = "approved by "+by+" on "+resp.Via, "phone"
 	}
 	approver := chain.Approver{Name: or(resp.By, operator())}
 	if method == "prompt" || resp.By == operator() {
 		approver = a.operator(o.Cfg) // the operator at this terminal: the runner's key
 	}
-	return grant(resp, authority.Result{How: how, History: req.RawDesc + "  (" + req.Flag + ", by " + by + ")",
+	who := by
+	if resp.Via != "" {
+		who += " on " + resp.Via
+	}
+	return grant(resp, authority.Result{How: how, History: req.RawDesc + "  (" + req.Flag + ", by " + who + ")",
 		Entry: chain.Entry{Method: method, Statement: how, Approvers: []chain.Approver{approver}}})
 }
 

@@ -96,6 +96,9 @@ environment, and `notify_url` as `$SWIM_NOTIFY_URL`:
 | `SWIM_ROOT` | The repo. |
 | `SWIM_PRIORITY`, `SWIM_TAGS` | ntfy's: `high` for a question or a failure (else `default`), and an emoji's name for how it ended, then the repo (`x,swimlane`). |
 | `SWIM_NOTIFY_URL` | `notify_url`. |
+| `SWIM_APPROVE_URL`, `SWIM_REJECT_URL` | For `ask` under `swim watch` with `phone` set: the question's links (see below). Empty otherwise. |
+| `SWIM_EXPIRES` | When those links stop working (RFC 3339). |
+| `SWIM_ACTIONS` | The links as ntfy's `Actions` header: an Approve and a Decline button. |
 
 Quote the variables: the body carries a lane's own text. Each send is
 killed after 15s; swim waits for it before exiting.
@@ -105,6 +108,45 @@ keys (`last sent 3m 0s ago: swimlane · run passed`, or why it failed;
 kept in `~/.local/state/swim/notify.json`), and `t` on its screen sends a
 test. `swim doctor` warns while sends fail (`notify-failing`, `notify`),
 and each failure is a `warn` line in `.swim.log`.
+
+### Answering from your phone
+
+With [Tailscale](https://tailscale.com) on this machine and your phone,
+`phone` lets one tap on a notification answer a question `swim watch`
+asks:
+
+```yaml
+defaults:
+  notify_url: https://ntfy.sh/TOPIC
+  phone: zachs-iphone   # its tailnet name (tailscale status) or 100.x address
+  phone_expiry: 15m     # the default
+```
+
+Each question's notification then carries two links: ntfy shows them as
+**Approve** and **Decline** buttons, and `notify_command` gets them as
+`$SWIM_APPROVE_URL` and `$SWIM_REJECT_URL`. A tap answers the way `y` or
+`n` does at the screen, and the lane's log and the chain say so:
+`approved by zach on phone zachs-iphone`, method `phone`.
+
+What keeps a tap yours:
+
+- `swim watch` serves the links on this machine's tailnet address alone,
+  on a port it picks each time it starts, and answers a request only when
+  it comes from the phone's address. A request from anywhere else, this
+  machine included (where lanes run), is refused before its token is read,
+  and is a `warn` line in `.swim.log`. A link that leaks (ntfy's cache, a
+  screenshot) answers nothing.
+- Each link has its own random 128-bit token, kept in `swim watch`'s
+  memory and never written to `.swim/` or `.swim.log`. It answers one
+  question, once: the first answer, on the phone or at the screen, ends
+  both of the question's links.
+- Each link stops working `phone_expiry` after the question was asked.
+  The question then waits for the screen.
+
+Tailscale must be connected on the phone when you tap: if it isn't, the
+tap does nothing and the question still waits. Phone answers need the
+watch screen and `watch_batches` of 2 or more (the default is 4).
+`swim run`'s questions are still answered only at its terminal.
 
 ## Interrupts
 

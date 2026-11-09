@@ -50,6 +50,8 @@ type Settings struct {
 	Notify             *bool    `yaml:"notify,omitempty"`               // terminal notifications and a progress bar (OSC 777, OSC 9;4; default off)
 	NotifyURL          string   `yaml:"notify_url,omitempty"`           // ntfy-style URL each notification is POSTed to (with curl)
 	NotifyCommand      string   `yaml:"notify_command,omitempty"`       // sh -c this for each notification instead, with SWIM_EVENT, SWIM_TITLE, ...
+	Phone              string   `yaml:"phone,omitempty"`                // tailnet device (name or IP) whose taps on a question's links answer it in swim watch
+	PhoneExpiry        string   `yaml:"phone_expiry,omitempty"`         // how long a question's phone links work (default 15m)
 	// Runners maps a lane script's extension (ts, py, ...) to the command
 	// that runs it ("tsx", "/usr/local/bin/python3"). A script's #! line
 	// wins; swim asks the operator for one the first time it meets an
@@ -278,6 +280,12 @@ func (c *Config) merge(r Settings) {
 	if r.NotifyCommand != "" {
 		c.NotifyCommand = r.NotifyCommand
 	}
+	if r.Phone != "" {
+		c.Phone = r.Phone
+	}
+	if r.PhoneExpiry != "" {
+		c.PhoneExpiry = r.PhoneExpiry
+	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
 	}
@@ -351,6 +359,19 @@ func (c *Config) ClaimLeaseFor() time.Duration {
 		return d
 	}
 	return lane.DefaultClaimLease
+}
+
+// DefaultPhoneExpiry is how long a question's phone links work unless
+// phone_expiry says otherwise.
+const DefaultPhoneExpiry = 15 * time.Minute
+
+// PhoneExpiryFor is phone_expiry: how long after a question is asked its
+// phone links still answer it.
+func (c *Config) PhoneExpiryFor() time.Duration {
+	if d, err := time.ParseDuration(c.PhoneExpiry); err == nil && d >= time.Minute {
+		return d
+	}
+	return DefaultPhoneExpiry
 }
 
 // NotifyOn is notify: whether swim run and swim watch send the terminal
