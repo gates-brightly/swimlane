@@ -986,17 +986,15 @@ func cmdWatch(args []string) error {
 	// the phone (watchphone.go). The questions are the watch screen's, from
 	// batches run alongside each other.
 	if cfg.Phone != "" {
-		switch {
-		case view == nil || batches < 2:
+		if view == nil || batches < 2 {
 			s.say("phone answers need the watch screen and 2 or more batches at once (watch_batches); questions wait for the terminal")
-		default:
-			ph, err := startPhone(cfg, view.asks, func(why string) {
-				history.Log(root, history.Entry{Event: history.Warn, Detail: why})
-			})
-			if err != nil {
-				s.say("phone answers are off: " + err.Error())
-				break
-			}
+		} else if notes == nil || notes.hook == nil {
+			s.say("phone answers need notify_url or notify_command to carry their links; questions wait for the terminal")
+		} else if ph, err := startPhone(cfg, view.asks, func(why string) {
+			history.Log(root, history.Entry{Event: history.Warn, Detail: why})
+		}); err != nil {
+			s.say("phone answers are off: " + err.Error())
+		} else {
 			defer ph.stop()
 			fmt.Println(p.Paint(ui.Dim, fmt.Sprintf("swim watch · %s answers questions from its notifications (links work for %s)",
 				cfg.Phone, display.Duration(ph.expiry))))

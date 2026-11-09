@@ -237,7 +237,7 @@ func (s *Server) Path() string { return s.ln.Addr().String() }
 // Register records a lane process the launcher is about to start and
 // returns its token, for TokenEnv.
 func (s *Server) Register(c Caller) string {
-	tok := newID()
+	tok := NewID()
 	c.Token = tok
 	s.mu.Lock()
 	s.callers[tok] = c
@@ -264,7 +264,8 @@ func (s *Server) Revoke(tok string) {
 	delete(s.callers, tok)
 }
 
-func newID() string {
+// NewID is a random 128-bit ID, hex: tokens, approval IDs, phone links.
+func NewID() string {
 	var b [16]byte
 	rand.Read(b[:])
 	return hex.EncodeToString(b[:])
@@ -510,7 +511,7 @@ func (s *Server) serve(c net.Conn) {
 	}
 	resp.Lane, resp.Job, resp.ID = req.Lane, req.Job, ""
 	if resp.Approved {
-		resp.ID = newID()
+		resp.ID = NewID()
 		s.mu.Lock()
 		s.issued[resp.ID] = &issued{token: req.Token, flag: req.Flag, grant: resp.Grant}
 		s.mu.Unlock()

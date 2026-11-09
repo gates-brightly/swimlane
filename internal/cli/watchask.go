@@ -314,22 +314,22 @@ func (a *watchAsks) answer(key string, k rune) string {
 		a.mu.Unlock()
 		return "nothing waits for an answer"
 	}
-	m := q.msg
-	m.Flag = approval.Clean(m.Flag)
-	who := fmt.Sprintf("lane %d (#%d)", m.Lane, q.seq)
-	var r askMsg
-	var msg string
-	switch {
-	case k == 'y' || k == 'n':
-		r = askMsg{Approved: k == 'y', By: operator()}
-		msg = fmt.Sprintf("%s: %s declined", who, m.Flag)
-		if r.Approved {
-			msg = fmt.Sprintf("%s: %s approved", who, m.Flag)
-		}
-	default:
+	if k != 'y' && k != 'n' {
 		a.mu.Unlock()
-		return fmt.Sprintf("%s asks for approval of %s: y approves, n declines", who, m.Flag)
+		return fmt.Sprintf("%s asks for approval of %s: y approves, n declines", q.who(), approval.Clean(q.msg.Flag))
 	}
+	return a.settle(q, askMsg{Approved: k == 'y', By: operator()})
+}
+
+// who is the question's lane and batch, as answers name them.
+func (q *watchAsk) who() string {
+	return fmt.Sprintf("lane %d (#%d)", q.msg.Lane, q.seq)
+}
+
+// settle answers q with r, however it was answered: it takes q off the
+// list, replies to its batch and says what happened. a.mu is held on the
+// way in and released.
+func (a *watchAsks) settle(q *watchAsk, r askMsg) string {
 	for i, p := range a.list {
 		if p == q {
 			a.list = append(a.list[:i:i], a.list[i+1:]...)
@@ -338,5 +338,10 @@ func (a *watchAsks) answer(key string, k rune) string {
 	}
 	a.mu.Unlock()
 	q.reply(r)
-	return msg
+	a.notify()
+	verdict := "declined"
+	if r.Approved {
+		verdict = "approved"
+	}
+	return fmt.Sprintf("%s: %s %s", q.who(), approval.Clean(q.msg.Flag), verdict)
 }
