@@ -12,13 +12,10 @@ import (
 )
 
 // phoneForTest is a's phone answers, as startPhone sets them up, from the
-// phone at 100.64.0.2, with links that work for a minute after now().
-func phoneForTest(a *watchAsks, now *time.Time, warned *[]string) *phoneAnswers {
-	p := &phoneAnswers{name: "zphone", phone: netip.MustParseAddr("100.64.0.2"), base: "http://100.64.0.1:4242",
-		expiry: time.Minute, now: func() time.Time { return *now }, asks: a,
-		warn: func(s string) { *warned = append(*warned, s) }}
-	a.phone = p
-	return p
+// phone at 100.64.0.2, with links that work for a minute.
+func phoneForTest(a *watchAsks) *phoneAnswers {
+	return &phoneAnswers{name: "zphone", phone: netip.MustParseAddr("100.64.0.2"), base: "http://100.64.0.1:4242",
+		expiry: time.Minute, asks: a, warn: func(string) {}, links: map[string]phoneLink{}}
 }
 
 // tap requests url's path from addr, as the phone (or anything else on
@@ -34,18 +31,16 @@ func tap(p *phoneAnswers, method, url, addr string) (int, string) {
 func TestPhoneLinkApproves(t *testing.T) {
 	c, a, stop := askPairForTest(t, 7)
 	defer stop()
-	now := time.Now()
+	p := phoneForTest(a)
 	var warned []string
-	p := phoneForTest(a, &now, &warned)
+	p.warn = func(s string) { warned = append(warned, s) }
 	got := make(chan approval.Response, 1)
 	go func() { got <- c.ask(approval.Request{Lane: 3, Flag: "DEPLOY", Desc: "deploy 2.4.1"}, nil) }()
 	q := waitPending(t, a, 1)[0]
-	approve, reject := p.links(q)
-	if !strings.HasPrefix(approve, "http://100.64.0.1:4242/approve/") || !strings.HasPrefix(reject, "http://100.64.0.1:4242/reject/") {
-		t.Fatalf("links: %q %q", approve, reject)
-	}
-	if len(q.approveTok) != 32 || q.approveTok == q.rejectTok || !q.expires.Equal(q.since.Add(time.Minute)) {
-		t.Fatalf("tokens %q %q, expires %v (asked %v)", q.approveTok, q.rejectTok, q.expires, q.since)
+	approve, reject, expires := p.issue(q)
+	apTok, rjTok := strings.TrimPrefix(approve, "http://100.64.0.1:4242/approve/"), strings.TrimPrefix(reject, "http://100.64.0.1:4242/reject/")
+	if len(apTok) != 32 || len(rjTok) != 32 || apTok == rjTok || !expires.Equal(q.since.Add(time.Minute)) {
+		t.Fatalf("links %q %q, expires %v (asked %v)", approve, reject, expires, q.since)
 	}
 
 	// Anything but the phone is refused before its token is looked at,
@@ -59,7 +54,7 @@ func TestPhoneLinkApproves(t *testing.T) {
 		t.Errorf("warnings: %q", warned)
 	}
 	for _, w := range warned {
-		if strings.Contains(w, q.approveTok) {
+		if strings.Contains(w, apTok) {
 			t.Errorf("a warning holds the token: %q", w)
 		}
 	}
@@ -96,12 +91,10 @@ func TestPhoneLinkApproves(t *testing.T) {
 func TestPhoneLinkDeclines(t *testing.T) {
 	c, a, stop := askPairForTest(t, 2)
 	defer stop()
-	now := time.Now()
-	var warned []string
-	p := phoneForTest(a, &now, &warned)
+	p := phoneForTest(a)
 	got := make(chan approval.Response, 1)
 	go func() { got <- c.ask(approval.Request{Lane: 1, Flag: "DROP", Desc: "drop it"}, nil) }()
-	_, reject := p.links(waitPending(t, a, 1)[0])
+	_, reject, _ := p.issue(waitPending(t, a, 1)[0])
 	if code, body := tap(p, "POST", reject, "[::ffff:100.64.0.2]:5000"); code != http.StatusOK || !strings.Contains(body, "DROP declined") {
 		t.Errorf("decline: %d %q", code, body)
 	}
@@ -115,15 +108,13 @@ func TestPhoneLinkDeclines(t *testing.T) {
 func TestPhoneLinkExpires(t *testing.T) {
 	c, a, stop := askPairForTest(t, 4)
 	defer stop()
-	now := time.Now()
-	var warned []string
-	p := phoneForTest(a, &now, &warned)
+	p := phoneForTest(a)
+	p.expiry = -time.Second
 	got := make(chan approval.Response, 1)
 	go func() { got <- c.ask(approval.Request{Lane: 2, Flag: "F", Desc: "d"}, nil) }()
 	q := waitPending(t, a, 1)[0]
-	approve, _ := p.links(q)
-	now = q.expires
-	if code, body := tap(p, "GET", approve, "100.64.0.2:5000"); code != http.StatusGone || !strings.Contains(body, "expired at "+q.expires.Format("15:04:05")) {
+	approve, _, expires := p.issue(q)
+	if code, body := tap(p, "GET", approve, "100.64.0.2:5000"); code != http.StatusGone || !strings.Contains(body, "expired at "+expires.Format("15:04:05")) {
 		t.Errorf("expired: %d %q", code, body)
 	}
 	if p, _ := a.pending(); len(p) != 1 {
@@ -139,38 +130,31 @@ func TestPhoneLinkExpires(t *testing.T) {
 func TestPhoneLinkAfterTerminal(t *testing.T) {
 	c, a, stop := askPairForTest(t, 5)
 	defer stop()
-	now := time.Now()
-	var warned []string
-	p := phoneForTest(a, &now, &warned)
+	p := phoneForTest(a)
 	got := make(chan approval.Response, 1)
 	go func() { got <- c.ask(approval.Request{Lane: 2, Flag: "F", Desc: "d"}, nil) }()
 	q := waitPending(t, a, 1)[0]
+	approve, _, _ := p.issue(q)
 	a.answer(q.key, 'y')
 	<-got
-	approve, _ := p.links(q)
 	if code, _ := tap(p, "GET", approve, "100.64.0.2:5000"); code != http.StatusGone {
 		t.Errorf("after the terminal answered: %d", code)
 	}
-}
-
-// Without phone, questions have no links.
-func TestPhoneOffNoLinks(t *testing.T) {
-	c, a, stop := askPairForTest(t, 1)
-	defer stop()
-	go c.ask(approval.Request{Lane: 1, Flag: "F", Desc: "d"}, nil)
-	q := waitPending(t, a, 1)[0]
-	if ap, rj := a.phone.links(q); ap != "" || rj != "" || q.approveTok != "" {
-		t.Errorf("links without phone: %q %q", ap, rj)
+	// The next question's links clear the answered one's.
+	go c.ask(approval.Request{Lane: 2, Flag: "G", Desc: "d"}, nil)
+	q = waitPending(t, a, 1)[0]
+	p.issue(q)
+	if len(p.links) != 2 {
+		t.Errorf("%d links kept, want the waiting question's 2", len(p.links))
 	}
 	a.answer(q.key, 'n')
 }
 
-func TestInTailnet(t *testing.T) {
-	for addr, want := range map[string]bool{"100.64.0.1": true, "100.127.255.254": true, "100.128.0.1": false,
-		"192.168.1.20": false, "127.0.0.1": false, "fd7a:115c:a1e0::1": true} {
-		if got := inTailnet(netip.MustParseAddr(addr)); got != want {
-			t.Errorf("inTailnet(%s) = %v", addr, got)
-		}
+// Without phone, questions have no links.
+func TestPhoneOffNoLinks(t *testing.T) {
+	var p *phoneAnswers
+	if ap, rj, _ := p.issue(watchAsk{key: "ask:q:1"}); ap != "" || rj != "" {
+		t.Errorf("links without phone: %q %q", ap, rj)
 	}
 }
 

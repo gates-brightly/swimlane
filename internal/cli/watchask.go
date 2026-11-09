@@ -167,11 +167,6 @@ type watchAsk struct {
 	msg   askMsg
 	since time.Time
 	reply func(askMsg)
-	// The question's phone links (watchphone.go), when phone answers are
-	// on: a token that approves, one that declines, each good once and
-	// until expires.
-	approveTok, rejectTok string
-	expires               time.Time
 }
 
 // watchAsks are the questions waiting at swim watch's screen, oldest
@@ -187,8 +182,6 @@ type watchAsks struct {
 	// changed, if set, is called when a question comes or goes (tests
 	// wait on it).
 	changed func()
-	// phone, if set, gives each question its phone links.
-	phone *phoneAnswers
 }
 
 func (a *watchAsks) notify() {
@@ -246,7 +239,6 @@ func (a *watchAsks) serve(e *queue.Entry, conn net.Conn) {
 					enc.Encode(r)
 					wmu.Unlock()
 				}}
-			a.phone.issue(q)
 			a.mu.Lock()
 			a.list = append(a.list, q)
 			a.added++
@@ -319,6 +311,19 @@ func (a *watchAsks) answer(key string, k rune) string {
 		return fmt.Sprintf("%s asks for approval of %s: y approves, n declines", q.who(), approval.Clean(q.msg.Flag))
 	}
 	return a.settle(q, askMsg{Approved: k == 'y', By: operator()})
+}
+
+// answerKey answers the question with row key, if it waits still: from
+// the phone (watchphone.go), which names one question and never the oldest.
+func (a *watchAsks) answerKey(key string, approve bool, via string) (string, bool) {
+	a.mu.Lock()
+	for _, q := range a.list {
+		if q.key == key {
+			return a.settle(q, askMsg{Approved: approve, By: operator(), Via: via}), true
+		}
+	}
+	a.mu.Unlock()
+	return "", false
 }
 
 // who is the question's lane and batch, as answers name them.
