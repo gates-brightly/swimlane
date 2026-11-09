@@ -107,6 +107,15 @@ var Commands = map[string]string{
                  swim config shows the last (t on its screen sends a test),
                  swim doctor warns when it failed, and a failure is a warn
                  line in .swim.log.
+    phone        a tailnet device         its taps answer swim watch's
+                 questions: each question's notification carries an
+                 approve and a decline link (ntfy buttons; SWIM_APPROVE_URL
+                 and SWIM_REJECT_URL), served on this machine's tailnet
+                 address and taken only from that device's. Each link
+                 answers its question once. Name it as Tailscale does
+                 (zachs-iphone) or by its 100.x address.
+    phone_expiry  duration (1m or more)   how long after a question is asked
+                 its phone links work. Default 15m.
     runners.EXT  a command                the runner for lane.N.EXT scripts with
                  no #! line, e.g. swim config runners.ts tsx. Written to the
                  repo's section (or the branch's, with --branch).

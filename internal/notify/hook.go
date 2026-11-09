@@ -33,6 +33,10 @@ type Note struct {
 	Batch  int    // swim watch's batch number (0: a swim run)
 	Repo   string // where it came from (Origin.Repo)
 	Branch string // the branch checked out there ("": detached or outside git)
+	// For EventAsk under swim watch with phone set: the question's links,
+	// one tap each, and when they stop working.
+	ApproveURL, RejectURL string
+	Expires               time.Time
 }
 
 // Origin is where a run's or a watch's notifications come from: every
@@ -67,9 +71,10 @@ func (o Origin) Note(n Note) Note {
 }
 
 // NtfyCommand is what a Hook runs with notify_url and no notify_command:
-// the note as an ntfy message (title, priority, tags) POSTed to the URL.
-// --fail-with-body makes an HTTP error fail, with what the server said.
-const NtfyCommand = `curl -sS --fail-with-body -m 10 -H "Title: $SWIM_TITLE" -H "Priority: $SWIM_PRIORITY" -H "Tags: $SWIM_TAGS" -d "$SWIM_BODY" "$SWIM_NOTIFY_URL"`
+// the note as an ntfy message (title, priority, tags, and a question's
+// Approve and Decline buttons) POSTed to the URL. --fail-with-body makes
+// an HTTP error fail, with what the server said.
+const NtfyCommand = `curl -sS --fail-with-body -m 10 -H "Title: $SWIM_TITLE" -H "Priority: $SWIM_PRIORITY" -H "Tags: $SWIM_TAGS" -H "Actions: $SWIM_ACTIONS" -d "$SWIM_BODY" "$SWIM_NOTIFY_URL"`
 
 // hookTimeout is how long one hook command may take before it's killed.
 const hookTimeout = 15 * time.Second
@@ -87,7 +92,8 @@ type HookConfig struct {
 // for each Note: `sh -c COMMAND` in the repo root, with the Note in its
 // environment (SWIM_EVENT, SWIM_RESULT, SWIM_TITLE, SWIM_BODY, SWIM_LANES,
 // SWIM_BATCH, SWIM_REPO, SWIM_BRANCH, SWIM_ROOT, SWIM_PRIORITY, SWIM_TAGS,
-// SWIM_NOTIFY_URL), so it
+// SWIM_NOTIFY_URL, and a question's SWIM_APPROVE_URL, SWIM_REJECT_URL,
+// SWIM_EXPIRES and SWIM_ACTIONS), so it
 // can send the note anywhere. Send runs it in the background; Wait waits
 // for those. A nil Hook runs nothing.
 type Hook struct {
@@ -185,6 +191,10 @@ func (n Note) env(root, url string) []string {
 		batch = strconv.Itoa(n.Batch)
 	}
 	priority, tags := n.urgency()
+	expires := ""
+	if !n.Expires.IsZero() {
+		expires = n.Expires.Format(time.RFC3339)
+	}
 	return []string{
 		"SWIM_EVENT=" + n.Event,
 		"SWIM_RESULT=" + n.Result,
@@ -198,7 +208,21 @@ func (n Note) env(root, url string) []string {
 		"SWIM_PRIORITY=" + priority,
 		"SWIM_TAGS=" + tags,
 		"SWIM_NOTIFY_URL=" + url,
+		"SWIM_APPROVE_URL=" + n.ApproveURL,
+		"SWIM_REJECT_URL=" + n.RejectURL,
+		"SWIM_EXPIRES=" + expires,
+		"SWIM_ACTIONS=" + n.actions(),
 	}
+}
+
+// actions is a question's links as ntfy action buttons ("" without
+// links): each tap is a POST from the ntfy app on the phone, and clears
+// the notification.
+func (n Note) actions() string {
+	if n.ApproveURL == "" || n.RejectURL == "" {
+		return ""
+	}
+	return "http, Approve, " + n.ApproveURL + ", method=POST, clear=true; http, Decline, " + n.RejectURL + ", method=POST, clear=true"
 }
 
 // urgency is n's ntfy priority and tags: an emoji's name, then the repo

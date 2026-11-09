@@ -117,6 +117,7 @@ type Response struct {
 	Why      string `json:"why,omitempty"` // for a decline without an answer: "the run is stopping", ...
 	Pre      bool   `json:"pre,omitempty"` // answered ahead of time in the live view (pre-approved / pre-declined)
 	At       string `json:"at,omitempty"`  // when a pre-answer was given (hh:mm:ss)
+	Via      string `json:"via,omitempty"` // where it was answered, when not at the terminal: "phone zachs-iphone"
 	// ID is the approval's request id, to consume once (approved only).
 	// Lane and Job are who the launcher says asked.
 	ID   string `json:"id,omitempty"`

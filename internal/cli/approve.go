@@ -235,6 +235,8 @@ func declined(resp approval.Response) string {
 		return resp.Why
 	case resp.Pre:
 		return "pre-declined by " + or(resp.By, operator()) + " at " + resp.At + " in the live view"
+	case resp.Via != "":
+		return "declined by " + or(resp.By, operator()) + " on " + resp.Via
 	case resp.By != "":
 		return "declined at the prompt by " + resp.By
 	case resp.Why != "":
