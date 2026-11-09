@@ -2,9 +2,7 @@ package cli
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -17,6 +15,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/notify"
 )
 
 // With phone set, a batch's question can be answered from the operator's
@@ -44,7 +43,7 @@ type phoneAnswers struct {
 	expiry time.Duration
 	now    func() time.Time
 	asks   *watchAsks
-	warn   func(string) // hears of a request refused (nil: nobody)
+	warn   func(string) // hears of a request refused
 	srv    *http.Server
 }
 
@@ -75,11 +74,11 @@ var tailnetIP = func(peer string) (netip.Addr, error) {
 	out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
 	line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("tailscale %s: %v: %s", strings.Join(args, " "), err, truncateRunes(line, 200))
+		return netip.Addr{}, fmt.Errorf("tailscale %s: %v: %s", strings.Join(args, " "), err, notify.Truncate(line, 200))
 	}
 	a, err := netip.ParseAddr(strings.TrimSpace(line))
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("tailscale %s said %q, not an address", strings.Join(args, " "), truncateRunes(line, 200))
+		return netip.Addr{}, fmt.Errorf("tailscale %s said %q, not an address", strings.Join(args, " "), notify.Truncate(line, 200))
 	}
 	return a.Unmap(), nil
 }
@@ -130,9 +129,7 @@ func startPhone(cfg *config.Config, asks *watchAsks, warn func(string)) (*phoneA
 
 // stop stops serving the links: none answers anything after.
 func (p *phoneAnswers) stop() {
-	if p != nil {
-		p.srv.Close()
-	}
+	p.srv.Close()
 }
 
 // issue gives q its links: a token that approves and one that declines,
@@ -141,7 +138,7 @@ func (p *phoneAnswers) issue(q *watchAsk) {
 	if p == nil {
 		return
 	}
-	q.approveTok, q.rejectTok = newToken(), newToken()
+	q.approveTok, q.rejectTok = approval.NewID(), approval.NewID()
 	q.expires = q.since.Add(p.expiry)
 }
 
@@ -151,12 +148,6 @@ func (p *phoneAnswers) links(q watchAsk) (approve, reject string) {
 		return "", ""
 	}
 	return p.base + "/approve/" + q.approveTok, p.base + "/reject/" + q.rejectTok
-}
-
-func newToken() string {
-	b := make([]byte, 16)
-	rand.Read(b) // never fails (crypto/rand)
-	return hex.EncodeToString(b)
 }
 
 // ServeHTTP answers one tap: GET or POST /approve/TOKEN or /reject/TOKEN,
@@ -176,9 +167,7 @@ func (p *phoneAnswers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			who = from.Addr().Unmap().String()
 		}
-		if p.warn != nil {
-			p.warn(fmt.Sprintf("phone link refused: the request came from %s, not %s (%s)", who, p.name, p.phone))
-		}
+		p.warn(fmt.Sprintf("phone link refused: the request came from %s, not %s (%s)", who, p.name, p.phone))
 		reply(http.StatusForbidden, "only "+p.name+" answers swim's questions")
 		return
 	}
@@ -201,14 +190,13 @@ func (p *phoneAnswers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (a *watchAsks) answerLink(approve bool, tok string, now time.Time, via string) (int, string) {
 	a.mu.Lock()
 	var q *watchAsk
-	at := -1
-	for i, p := range a.list {
+	for _, p := range a.list {
 		mine := p.rejectTok
 		if approve {
 			mine = p.approveTok
 		}
 		if mine != "" && subtle.ConstantTimeCompare([]byte(mine), []byte(tok)) == 1 {
-			q, at = p, i
+			q = p
 			break
 		}
 	}
@@ -216,26 +204,10 @@ func (a *watchAsks) answerLink(approve bool, tok string, now time.Time, via stri
 		a.mu.Unlock()
 		return http.StatusGone, "nothing waits on this link: its question was answered, withdrawn or its batch ended"
 	}
-	flag := approval.Clean(q.msg.Flag)
-	who := fmt.Sprintf("lane %d (#%d)", q.msg.Lane, q.seq)
 	if !now.Before(q.expires) {
 		a.mu.Unlock()
 		return http.StatusGone, fmt.Sprintf("%s: this link expired at %s (phone_expiry); %s waits for an answer at swim watch",
-			who, q.expires.Format("15:04:05"), flag)
+			q.who(), q.expires.Format("15:04:05"), approval.Clean(q.msg.Flag))
 	}
-	a.list = append(a.list[:at:at], a.list[at+1:]...)
-	a.mu.Unlock()
-	q.reply(askMsg{Approved: approve, By: operator(), Via: via})
-	a.notify()
-	if approve {
-		return http.StatusOK, fmt.Sprintf("%s: %s approved", who, flag)
-	}
-	return http.StatusOK, fmt.Sprintf("%s: %s declined", who, flag)
-}
-
-func truncateRunes(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n]) + "…"
-	}
-	return s
+	return http.StatusOK, a.settle(q, askMsg{Approved: approve, By: operator(), Via: via})
 }

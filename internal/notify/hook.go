@@ -175,7 +175,7 @@ func (h *Hook) run(n Note) error {
 	}
 	msg := err.Error()
 	if s := clean(out.String()); s != "" {
-		msg += ": " + truncate(s, 200)
+		msg += ": " + Truncate(s, 200)
 	}
 	return errors.New(msg)
 }
@@ -254,7 +254,8 @@ func (n Note) level() (priority, tag string) {
 	return "high", "x"
 }
 
-func truncate(s string, n int) string {
+// Truncate cuts s to n runes, marking the cut with "…".
+func Truncate(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[:n]) + "…"
 	}
