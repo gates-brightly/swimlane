@@ -38,6 +38,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261109.1 (v0.20261109.1, 2026-11-09)
+
 **What changed for you**
 
 - `phone: <tailnet device>`: answer `swim watch`'s questions from your phone with one tap.
