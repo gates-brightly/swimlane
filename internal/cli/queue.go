@@ -996,6 +996,7 @@ func cmdWatch(args []string) error {
 			s.say("phone answers are off: " + err.Error())
 		} else {
 			defer ph.stop()
+			notes.phone = ph
 			fmt.Println(p.Paint(ui.Dim, fmt.Sprintf("swim watch · %s answers questions from its notifications (links work for %s)",
 				cfg.Phone, display.Duration(ph.expiry))))
 		}

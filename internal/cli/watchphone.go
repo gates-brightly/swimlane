@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
@@ -41,10 +41,21 @@ type phoneAnswers struct {
 	phone  netip.Addr // the one address answers come from
 	base   string     // http://<this machine's tailnet address>:<port>
 	expiry time.Duration
-	now    func() time.Time
 	asks   *watchAsks
 	warn   func(string) // hears of a request refused
 	srv    *http.Server
+
+	mu    sync.Mutex
+	links map[string]phoneLink // by token
+}
+
+// phoneLink is what one link answers: the question with key, approving or
+// declining, until expires. pair is the question's other link's token.
+type phoneLink struct {
+	key, who, flag string
+	approve        bool
+	expires        time.Time
+	pair           string
 }
 
 // macTailscale is the Tailscale app's CLI on macOS, which isn't on PATH
@@ -83,23 +94,11 @@ var tailnetIP = func(peer string) (netip.Addr, error) {
 	return a.Unmap(), nil
 }
 
-// Tailscale's address ranges: a tailnet address is in one of them.
-var tailnetRanges = []netip.Prefix{
-	netip.MustParsePrefix("100.64.0.0/10"),
-	netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
-}
-
-func inTailnet(a netip.Addr) bool {
-	for _, p := range tailnetRanges {
-		if p.Contains(a) {
-			return true
-		}
-	}
-	return false
-}
+// tailnet is Tailscale's IPv4 range: tailnetIP asks for IPv4 alone.
+var tailnet = netip.MustParsePrefix("100.64.0.0/10")
 
 // startPhone starts answering asks' questions from the phone cfg names:
-// it gives each question its links and serves them until stop.
+// it serves the links issue gives them until stop.
 func startPhone(cfg *config.Config, asks *watchAsks, warn func(string)) (*phoneAnswers, error) {
 	self, err := tailnetIP("")
 	if err != nil {
@@ -110,7 +109,7 @@ func startPhone(cfg *config.Config, asks *watchAsks, warn func(string)) (*phoneA
 		return nil, fmt.Errorf("phone %s: %v", cfg.Phone, err)
 	}
 	for _, a := range []netip.Addr{self, phone} {
-		if !inTailnet(a) {
+		if !tailnet.Contains(a) {
 			return nil, fmt.Errorf("%s isn't a tailnet address (100.64.0.0/10)", a)
 		}
 	}
@@ -119,11 +118,10 @@ func startPhone(cfg *config.Config, asks *watchAsks, warn func(string)) (*phoneA
 		return nil, err
 	}
 	p := &phoneAnswers{name: cfg.Phone, phone: phone, base: "http://" + ln.Addr().String(),
-		expiry: cfg.PhoneExpiryFor(), now: time.Now, asks: asks, warn: warn}
+		expiry: cfg.PhoneExpiryFor(), asks: asks, warn: warn, links: map[string]phoneLink{}}
 	p.srv = &http.Server{Handler: p, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
 		WriteTimeout: 10 * time.Second, MaxHeaderBytes: 8 << 10}
 	go p.srv.Serve(ln)
-	asks.phone = p
 	return p, nil
 }
 
@@ -132,22 +130,27 @@ func (p *phoneAnswers) stop() {
 	p.srv.Close()
 }
 
-// issue gives q its links: a token that approves and one that declines,
-// stamped with when q was asked and good until phone_expiry after.
-func (p *phoneAnswers) issue(q *watchAsk) {
+// issue gives q its links, one that approves and one that declines, and
+// when they stop working: phone_expiry after q was asked. They are all ""
+// when phone answers are off. Links whose question no longer waits go.
+func (p *phoneAnswers) issue(q watchAsk) (approve, reject string, expires time.Time) {
 	if p == nil {
-		return
+		return "", "", time.Time{}
 	}
-	q.approveTok, q.rejectTok = approval.NewID(), approval.NewID()
-	q.expires = q.since.Add(p.expiry)
-}
-
-// links are q's two links ("" when q has none).
-func (p *phoneAnswers) links(q watchAsk) (approve, reject string) {
-	if p == nil || q.approveTok == "" {
-		return "", ""
+	ap, rj := approval.NewID(), approval.NewID()
+	l := phoneLink{key: q.key, who: q.who(), flag: approval.Clean(q.msg.Flag), expires: q.since.Add(p.expiry)}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for tok, old := range p.links {
+		if _, waits := p.asks.lane(old.key); !waits {
+			delete(p.links, tok)
+		}
 	}
-	return p.base + "/approve/" + q.approveTok, p.base + "/reject/" + q.rejectTok
+	l.approve, l.pair = true, rj
+	p.links[ap] = l
+	l.approve, l.pair = false, ap
+	p.links[rj] = l
+	return p.base + "/approve/" + ap, p.base + "/reject/" + rj, l.expires
 }
 
 // ServeHTTP answers one tap: GET or POST /approve/TOKEN or /reject/TOKEN,
@@ -181,33 +184,38 @@ func (p *phoneAnswers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(http.StatusNotFound, "not a swim link")
 		return
 	}
-	reply(p.asks.answerLink(verb == "approve", tok, p.now(), "phone "+p.name))
+	reply(p.answer(verb == "approve", tok, time.Now()))
 }
 
-// answerLink answers the question whose approve (or reject) link has tok,
-// on via, if that link hasn't expired by now. It returns the HTTP status
-// and what happened.
-func (a *watchAsks) answerLink(approve bool, tok string, now time.Time, via string) (int, string) {
-	a.mu.Lock()
-	var q *watchAsk
-	for _, p := range a.list {
-		mine := p.rejectTok
-		if approve {
-			mine = p.approveTok
-		}
-		if mine != "" && subtle.ConstantTimeCompare([]byte(mine), []byte(tok)) == 1 {
-			q = p
-			break
-		}
+// answer answers the question tok's link is for, if that link approves
+// (or declines) as asked, its question waits still and it hasn't expired
+// by now. It returns the HTTP status and what happened.
+func (p *phoneAnswers) answer(approve bool, tok string, now time.Time) (int, string) {
+	const gone = "nothing waits on this link: its question was answered, withdrawn or its batch ended"
+	p.mu.Lock()
+	l, ok := p.links[tok]
+	if ok && l.approve != approve {
+		ok = false
 	}
-	if q == nil {
-		a.mu.Unlock()
-		return http.StatusGone, "nothing waits on this link: its question was answered, withdrawn or its batch ended"
+	expired := ok && !now.Before(l.expires)
+	if ok && !expired {
+		delete(p.links, tok)
+		delete(p.links, l.pair)
 	}
-	if !now.Before(q.expires) {
-		a.mu.Unlock()
+	p.mu.Unlock()
+	switch {
+	case !ok:
+		return http.StatusGone, gone
+	case expired:
+		if _, waits := p.asks.lane(l.key); !waits {
+			return http.StatusGone, gone
+		}
 		return http.StatusGone, fmt.Sprintf("%s: this link expired at %s (phone_expiry); %s waits for an answer at swim watch",
-			q.who(), q.expires.Format("15:04:05"), approval.Clean(q.msg.Flag))
+			l.who, l.expires.Format("15:04:05"), l.flag)
 	}
-	return http.StatusOK, a.settle(q, askMsg{Approved: approve, By: operator(), Via: via})
+	msg, waits := p.asks.answerKey(l.key, approve, "phone "+p.name)
+	if !waits {
+		return http.StatusGone, gone
+	}
+	return http.StatusOK, msg
 }

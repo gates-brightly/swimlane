@@ -501,6 +501,11 @@ func (c *Config) validateInterrupt() error {
 			return fmt.Errorf("claim_lease must be a duration of 1m or more, like 2h, got %q", c.ClaimLease)
 		}
 	}
+	if c.PhoneExpiry != "" {
+		if d, err := time.ParseDuration(c.PhoneExpiry); err != nil || d < time.Minute {
+			return fmt.Errorf("phone_expiry must be a duration of 1m or more, like 15m, got %q", c.PhoneExpiry)
+		}
+	}
 	if c.WatchBatches < 0 {
 		return fmt.Errorf("watch_batches must be 1 or more, got %d", c.WatchBatches)
 	}

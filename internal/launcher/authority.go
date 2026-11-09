@@ -234,7 +234,7 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	switch {
 	case resp.Pre:
 		how, method = "pre-approved by "+by+" at "+resp.At+" in the live view", "preapproved"
-	case resp.Via != "":
+	case resp.Via != "": // set only by swim watch's phone links
 		how, method = "approved by "+by, "phone"
 	}
 	if method == "prompt" || resp.By == operator() {

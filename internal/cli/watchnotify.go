@@ -20,11 +20,12 @@ import (
 // failed, paused while a question waits. notify_command hears of the same
 // questions and batch ends. A nil watchNotes sends nothing.
 type watchNotes struct {
-	t    *notify.Terminal // nil: no terminal notifications or bar
-	hook *notify.Hook     // nil: no notify_command
-	root string
-	from notify.Origin // what each title starts with
-	asks *watchAsks    // the screen's questions (nil without the screen)
+	t     *notify.Terminal // nil: no terminal notifications or bar
+	hook  *notify.Hook     // nil: no notify_command
+	root  string
+	from  notify.Origin // what each title starts with
+	asks  *watchAsks    // the screen's questions (nil without the screen)
+	phone *phoneAnswers // gives each question its phone links (nil: off)
 
 	mu           sync.Mutex
 	ended, fails int // batches of the work in hand that ended, and failed
@@ -81,11 +82,8 @@ func (n *watchNotes) asked(q watchAsk) {
 	body := fmt.Sprintf("%s: %s · batch #%d", what, approval.Clean(q.msg.Desc), q.seq)
 	n.t.Notify(title, body)
 	note := notify.Note{Event: notify.EventAsk, Title: title, Body: body, Lanes: []int{q.msg.Lane}, Batch: q.seq}
-	if n.asks != nil {
-		if note.ApproveURL, note.RejectURL = n.asks.phone.links(q); note.ApproveURL != "" {
-			note.Expires = q.expires
-			note.Body += " · the links work until " + q.expires.Format("15:04")
-		}
+	if note.ApproveURL, note.RejectURL, note.Expires = n.phone.issue(q); note.ApproveURL != "" {
+		note.Body += " · the links work until " + note.Expires.Format("15:04")
 	}
 	n.hook.Send(n.from.Note(note))
 	n.progress()
