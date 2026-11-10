@@ -47,6 +47,7 @@ history stays here, since `swim changelog --since` reads it.
 - A waiting batch says what it waits for, on the watch screen and in `swim queue`: `waits: lane 2 is running (pid 4121)`.
 - `run`, step's old name, is gone: a lane that still calls it fails ("run: command not found").
 - `swim queue` and `swim status` say what the watcher's lanes run on: `watcher: zach-mbp, darwin/arm64, bash 3.2`.
+- After a fix, `swim queue requeue ID --failed` (or `r` on the batch in `swim watch`) runs only what didn't pass.
 
 ### Changed
 
@@ -102,6 +103,15 @@ history stays here, since `swim changelog --since` reads it.
   batch, #3, has lane 4`. With `--batches 1`, the oldest waits for every
   lane to be free and the rest say `an older batch, #3, runs first`.
   `swim queue --yaml` carries it as `waits:`.
+- **`swim queue requeue ID --failed`:** after a fix, queue a finished
+  batch's lanes that didn't pass (failed, interrupted, skipped) as a new
+  batch, pinned to their scripts as they are now. The lanes that passed
+  stay out, and an `# After:` on one is met. The batch's approvals go
+  with it only for lanes whose manifest hasn't changed; it names the
+  ones it didn't carry ("not carried: FLAG (lane 2 changed since it was
+  queued)"), so a fixed lane's guard is asked again or dry-runs. On
+  `swim watch`'s screen, a batch that ended without passing stays
+  listed, and `r` on it does the same.
 - **Why a guard is there:** a `#   why: <reason>` line right under a
   `# Guards: FLAG  <what it does>` line says why the change is made. The
   approval prompt, `swim watch`, its notifications (and the phone's) and

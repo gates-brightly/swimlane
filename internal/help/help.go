@@ -497,6 +497,7 @@ swim log --since <1h|TIME|RUN|ROUND-ID>
 swim queue N|ROUND-ID ... [--approve FLAG[,FLAG]]... [--parallel N] [--note TEXT]
 swim queue add [flags]           every ready round that hasn't passed
 swim queue show|rm|requeue ID
+swim queue requeue ID --failed   what didn't pass, as a new batch
 
   Queue a batch of rounds to run as soon as its lanes are free, by a
   watcher (swim watch). Get a batch ready, queue it with its approvals, and let it
@@ -539,6 +540,13 @@ swim queue show|rm|requeue ID
   rm ID     remove an entry that isn't running
   requeue ID  put an orphaned (its watcher died) or consumed entry back at the
             end of the queue
+            --failed  instead, queue a new batch of a finished batch's lanes
+                      that didn't pass (failed, interrupted, skipped), pinned
+                      to their scripts as they are now (the fix). The lanes
+                      that passed stay out, and # After: on one is met. Its
+                      approvals go with it only for lanes whose manifest
+                      hasn't changed; it names the ones it didn't carry.
+                      On swim watch's screen, r on a finished batch does it.
   A claimed entry is orphaned when its watcher is gone: on the watcher's host,
   its process (pid and start time) is; from another host sharing the queue,
   its heartbeat is older than its lease (queue_lease, default 2m). A claim by

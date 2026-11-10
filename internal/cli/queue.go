@@ -445,6 +445,11 @@ type queueOpts struct {
 	approve  []string
 	note     string
 	parallel *int
+	// carry is set for a requeued batch: the manifest each lane was queued
+	// with. A flag in approve is then kept only if every lane here that
+	// holds its guard still has that manifest; the others are dropped (not
+	// refused) and named in the batch's dropped.
+	carry map[int]string
 }
 
 // askingSwimmer is the first of the live watchers whose screen asks the
@@ -497,6 +502,8 @@ type batch struct {
 	// asker is a watcher up as it was queued whose screen asks the
 	// operator for its guards (nil for none).
 	asker *queue.Presence
+	// dropped are the approvals a requeue didn't carry, each with why.
+	dropped []string
 }
 
 // addBatch queues lanes as one batch, pinned to the scripts and env they
@@ -510,7 +517,7 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 		return b, err
 	}
 	var err error
-	if e.Lanes, e.Approve, b.guards, err = pinBatch(root, cfg, lanes, o.approve); err != nil {
+	if e.Lanes, e.Approve, b.guards, b.dropped, err = pinBatch(root, cfg, lanes, o.approve, o.carry); err != nil {
 		return b, err
 	}
 	e.ID = queue.NewID()
@@ -554,35 +561,74 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 
 // pinBatch pins lanes as a batch holds them, with the guards they hold and
 // approve (each must name one of those guards: a typo would otherwise
-// approve nothing, silently).
-func pinBatch(root string, cfg *config.Config, lanes []int, approve []string) ([]queue.Lane, []string, map[string]bool, error) {
+// approve nothing, silently). With carry (a requeue, queueOpts.carry) a
+// flag is kept only where every lane holding its guard is pinned to the
+// manifest carry names; the rest come back as dropped, with why.
+func pinBatch(root string, cfg *config.Config, lanes []int, approve []string, carry map[int]string) ([]queue.Lane, []string, map[string]bool, []string, error) {
 	var pinned []queue.Lane
 	guards := map[string]bool{}
+	holders := map[string][]queue.Lane{} // flag -> the lanes whose guard it is
 	for _, n := range lanes {
 		l, info, err := pinLane(root, cfg, n)
 		if err != nil {
-			return nil, nil, guards, err
+			return nil, nil, guards, nil, err
 		}
 		pinned = append(pinned, l)
 		for _, g := range info.Guards {
 			guards[g.Flag] = true
+			holders[g.Flag] = append(holders[g.Flag], l)
 		}
 	}
-	var approved []string
+	var approved, dropped []string
 	seen := map[string]bool{}
 	for _, f := range approve {
 		f = strings.TrimSpace(f)
 		if f == "" || seen[f] {
 			continue
 		}
-		if !guards[f] {
-			return nil, nil, guards, fmt.Errorf("--approve %s: no lane in this batch has a guard %s (its guards: %s)", f, f, or(strings.Join(sortedKeys(guards), ", "), "none"))
-		}
 		seen[f] = true
+		if carry != nil {
+			// A lane left out (it passed) took its guards with it.
+			var changed []string
+			for _, l := range holders[f] {
+				if l.Manifest == "" || carry[l.Lane] != l.Manifest {
+					changed = append(changed, strconv.Itoa(l.Lane))
+				}
+			}
+			if len(changed) > 0 {
+				dropped = append(dropped, fmt.Sprintf("%s (lane %s changed since it was queued)", f, strings.Join(changed, ",")))
+			}
+			if len(changed) > 0 || len(holders[f]) == 0 {
+				continue
+			}
+		} else if !guards[f] {
+			return nil, nil, guards, nil, fmt.Errorf("--approve %s: no lane in this batch has a guard %s (its guards: %s)", f, f, or(strings.Join(sortedKeys(guards), ", "), "none"))
+		}
 		approved = append(approved, f)
 	}
 	sort.Strings(approved)
-	return pinned, approved, guards, nil
+	return pinned, approved, guards, dropped, nil
+}
+
+// requeueFailed queues, as a new batch, the lanes of finished batch e that
+// didn't pass (failed, interrupted, skipped, or never ended), pinned to
+// their scripts as they are now: the fix. e's approvals go with it only
+// for lanes whose manifest hasn't changed (queueOpts.carry). The lanes
+// that passed are left out, and an # After: on one of them is met, as for
+// any lane outside a run whose round passed.
+func requeueFailed(root string, cfg *config.Config, e *queue.Entry) (batch, error) {
+	if e.State != queue.Done || e.Result == nil {
+		return batch{}, fmt.Errorf("#%d is %s: --failed requeues what didn't pass of a finished batch (swim queue requeue %d runs all of it again)", e.Seq, e.State, e.Seq)
+	}
+	lanes := notPassed(e)
+	carry := map[int]string{}
+	for _, l := range e.Lanes {
+		carry[l.Lane] = l.Manifest
+	}
+	if len(lanes) == 0 {
+		return batch{}, fmt.Errorf("every lane of #%d passed: nothing to requeue", e.Seq)
+	}
+	return addBatch(root, cfg, lanes, queueOpts{approve: e.Approve, note: fmt.Sprintf("what didn't pass of #%d", e.Seq), parallel: e.Parallel, carry: carry})
 }
 
 // pinLane is lane n as a queue entry holds it: its job and round, pinned
@@ -874,16 +920,47 @@ func queueRemove(args []string) error {
 }
 
 func queueRequeue(args []string) error {
-	if len(args) != 1 {
-		return usagef("usage: swim queue requeue ID")
+	var failed bool
+	args, err := flags{bools: map[string]*bool{"failed": &failed}}.parse(args)
+	if err != nil {
+		return err
 	}
-	root, _, err := repo()
+	if len(args) != 1 {
+		return usagef("usage: swim queue requeue ID [--failed]")
+	}
+	root, cfg, err := repo()
 	if err != nil {
 		return err
 	}
 	e, err := queue.Find(root, args[0])
 	if err != nil {
 		return err
+	}
+	if failed {
+		b, err := requeueFailed(root, cfg, e)
+		var refused lintRefused
+		if errors.As(err, &refused) {
+			finding.WriteText(os.Stderr, refused.fs)
+			fmt.Fprintln(os.Stderr, "swim queue: not requeued: swim run would refuse it; fix the errors above (swim lint shows every check), then requeue again")
+			return exitError{2}
+		}
+		if err != nil {
+			return err
+		}
+		if b.warn != "" {
+			fmt.Fprintln(os.Stderr, "swim queue: "+b.warn)
+		}
+		refreshStatus(root, cfg)
+		n := b.entry
+		fmt.Printf("requeued what didn't pass of #%d as #%d (%s): lane %s\n", e.Seq, n.Seq, n.ID, joinLanes(n))
+		if len(n.Approve) > 0 {
+			fmt.Println("  approvals: " + strings.Join(n.Approve, ", "))
+		}
+		if len(b.dropped) > 0 {
+			fmt.Println("  not carried: " + strings.Join(b.dropped, "; ") + ": approve again, or a watcher's screen asks")
+		}
+		fmt.Printf("  wait for it: swim wait %s\n", n.ID)
+		return nil
 	}
 	if e.State == queue.Queued {
 		return fmt.Errorf("%s is already waiting in the queue", e.ID)

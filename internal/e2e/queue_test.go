@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -205,6 +206,81 @@ func TestQueueApproveOrphanRemove(t *testing.T) {
 	contains(t, "rm", r.mustSwim("queue", "rm", "3"), "removed")
 	if out := r.mustSwim("queue"); strings.Contains(out, "queued") {
 		t.Errorf("still queued after rm:\n%s", out)
+	}
+}
+
+// T33: swim queue requeue ID --failed queues what didn't pass of a
+// finished batch, pinned as it is now: lane 2 (After: 1) runs again and
+// lane 1, which passed, doesn't. The batch's approval goes with lane 2
+// while its manifest is unchanged (the fix was outside it), and not once
+// its script was fixed.
+func TestRequeueFailed(t *testing.T) {
+	r := newRepo(t)
+	r.script(1, "schema", `step "schema" true`)
+	r.script(2, "backfill", `if guard ALLOW_FIX; then step "fixed" true; fi
+step "ready" test -e "$SWIM_ROOT/ready"`)
+	withHeader(t, r, 2, "# Guards:  ALLOW_FIX backfill the rows")
+	r.after(2, "1")
+	last := func() queue.Entry {
+		done := doneEntries(t, r)
+		sort.Slice(done, func(a, b int) bool { return done[a].Seq < done[b].Seq })
+		return done[len(done)-1]
+	}
+
+	r.mustSwim("queue", "1", "2", "--approve", "ALLOW_FIX")
+	r.swim("watch", "--once", "--plain")
+	if e := last(); e.Result == nil || e.Result.Result == "passed" {
+		t.Fatalf("batch 1: %+v", e.Result)
+	}
+	ran1 := r.status().Get(1).Run // lane 1's round, which passed
+	if ran1 == "" || r.status().Get(1).State != status.Passed {
+		t.Fatalf("lane 1 after #1: %+v", r.status().Get(1))
+	}
+	if out, code := r.swim("queue", "requeue", "1", "--failed", "--bogus"); code == 0 {
+		t.Errorf("an unknown flag: exit 0\n%s", out)
+	}
+
+	// The fix is outside lane 2's manifest: its approval goes with it.
+	r.write("ready", "", 0o644)
+	out := r.mustSwim("queue", "requeue", "1", "--failed")
+	contains(t, "requeue --failed", out, "requeued what didn't pass of #1 as #2", "lane 2", "approvals: ALLOW_FIX")
+	if strings.Contains(out, "not carried") {
+		t.Errorf("an unchanged lane's approval wasn't carried:\n%s", out)
+	}
+	r.swim("watch", "--once", "--plain")
+	if e := last(); e.Seq != 2 || len(e.Lanes) != 1 || e.Lanes[0].Lane != 2 || e.Result == nil || e.Result.Result != "passed" {
+		t.Fatalf("batch 2: %+v %+v\n%s", e.Lanes, e.Result, r.log(2))
+	}
+	if run := r.status().Get(1).Run; run != ran1 {
+		t.Errorf("lane 1 passed in #1, but ran again (run %s)", run)
+	}
+	contains(t, "lane2.log", r.log(2), "APPROVED  backfill the rows", "PASS  fixed", "PASS  ready")
+	if out, code := r.swim("queue", "requeue", "2", "--failed"); code == 0 || !strings.Contains(out, "every lane of #2 passed") {
+		t.Errorf("requeue a batch that passed: exit %d\n%s", code, out)
+	}
+
+	// Fail lane 2 again, then fix its script: the approval stays behind.
+	os.Remove(filepath.Join(r.root, "ready"))
+	r.mustSwim("queue", "2", "--approve", "ALLOW_FIX")
+	r.swim("watch", "--once", "--plain")
+	r.script(2, "backfill", `if guard ALLOW_FIX; then step "fixed" true; fi
+step "ready" true`)
+	withHeader(t, r, 2, "# Guards:  ALLOW_FIX backfill the rows")
+	r.after(2, "1")
+	out = r.mustSwim("queue", "requeue", "3", "--failed")
+	contains(t, "requeue a changed lane", out, "as #4", "not carried: ALLOW_FIX (lane 2 changed since it was queued)")
+	if strings.Contains(out, "approvals:") {
+		t.Errorf("a changed lane's approval was carried:\n%s", out)
+	}
+	r.swim("watch", "--once", "--plain")
+	rounds := strings.Split(r.log(2), "== ROUND ")
+	round := rounds[len(rounds)-1] // the log keeps the lane's earlier rounds
+	contains(t, "lane2.log, changed", round, "SKIP  backfill the rows", "PASS  ready")
+	if strings.Contains(round, "APPROVED") {
+		t.Errorf("the changed lane ran its guard approved:\n%s", round)
+	}
+	if run := r.status().Get(1).Run; run != ran1 {
+		t.Errorf("lane 1 ran again (run %s)", run)
 	}
 }
 
