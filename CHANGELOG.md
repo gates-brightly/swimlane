@@ -38,6 +38,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261110.1 (v0.20261110.1, 2026-11-10)
+
 ### Changed
 
 - **`swim archive` removes the lane's script:** the slot empties without a
