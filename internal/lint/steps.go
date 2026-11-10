@@ -255,8 +255,8 @@ func checkShortFormShebang(c *Context, s *Script) []finding.Finding {
 
 // checkGuardText: what a guard does is its # Guards: line's, which the
 // approval prompt and swim status show. The header must say it, and a
-// guard call that says it too (guard FLAG "<text>", the older form)
-// repeats it, or says something else.
+// guard call that says it too (guard FLAG "<text>", the older form, which
+// goes on guardTextGoes) repeats it, or says something else.
 func checkGuardText(c *Context, s *Script) []finding.Finding {
 	if !s.Lib {
 		return nil
@@ -285,14 +285,20 @@ func checkGuardText(c *Context, s *Script) []finding.Finding {
 				"# Guards: lists %s with no description: swim status and the operator see nothing of what it approves", flag))
 		case hd != desc:
 			out = append(out, f(finding.Warn, "guard-text", lc.Line, fmt.Sprintf("write `guard %s`: the prompt shows the header's words", flag),
-				"guard %s says %q here but %q in # Guards:, which is what the operator is asked", flag, desc, hd))
+				"guard %s says %q here but %q in # Guards:, which is what the operator is asked (guard FLAG \"<text>\" goes on %s)", flag, desc, hd, guardTextGoes))
 		default:
 			out = append(out, f(finding.Warn, "guard-text", lc.Line, fmt.Sprintf("write `guard %s` (swim lint --fix does)", flag),
-				"guard %s repeats its # Guards: text; the header alone says what it does", flag))
+				"guard %s repeats its # Guards: text; the header alone says what it does (guard FLAG \"<text>\" goes on %s)", flag, guardTextGoes))
 		}
 	}
 	return out
 }
+
+// guardTextGoes is when guard FLAG "<text>" goes: the first release on or
+// after it drops the text argument from the library's guard and swim
+// guard (a call with one fails as a usage error), and this check's
+// repeats and differs cases with it.
+const guardTextGoes = "2026-12-01"
 
 // guardLine is the 0-based line of flag's # Guards: line, or -1.
 func (s *Script) guardLine(flag string) int {

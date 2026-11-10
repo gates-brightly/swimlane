@@ -343,8 +343,9 @@ var Commands = map[string]string{
   In a lane script in any language: exit 0 if the operator approves what
   the header says FLAG does and why (# Guards: FLAG  <does>, and under it
   #   why: <why>), 1 if not. (swim guard FLAG "<action>", the older form,
-  gives the text in the call.) FLAG=1 approves up front; unset, swim asks the
-  operator; anything else records SKIP as a dry run.
+  gives the text in the call; it goes on 2026-12-01.) FLAG=1 approves up
+  front; unset, swim asks the operator; anything else records SKIP as a
+  dry run.
   Under swim run the launcher decides: FLAG=1 counts only if swim run's own
   environment set it (a FLAG=1 the lane sets is a dry run).
   One flag per destructive action; list it in the header (or lane.N.yml):

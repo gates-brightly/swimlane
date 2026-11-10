@@ -208,7 +208,8 @@ const endWait = 10 * time.Second
 // swim guard FLAG: exit 0 if the operator approves what the header says
 // FLAG does, 1 if not (recorded as a dry run). As the library's guard:
 // FLAG=1 approves up front; unset, swim asks the operator. The older form,
-// swim guard FLAG "<action>", gives the text in the call.
+// swim guard FLAG "<action>", gives the text in the call; it goes in the
+// first release on or after 2026-12-01 (guardTextGoes, internal/lint).
 func cmdGuard(args []string) error {
 	n, err := laneEnv("guard")
 	if err != nil {

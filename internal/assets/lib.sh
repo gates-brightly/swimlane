@@ -406,7 +406,8 @@ any_failed() {
 
 # guard FLAG — true if the operator approves what the header says FLAG
 # does and why (# Guards: FLAG  <does>, then #   why: <why>). An older
-# form, guard FLAG "<action>", gives the text in the call.
+# form, guard FLAG "<action>", gives the text in the call; it goes in the
+# first release on or after 2026-12-01 (guardTextGoes, internal/lint).
 # FLAG=1 approves up front (CI, scripts). With FLAG unset and an operator
 # at the terminal, swim asks: "swim N requires human approval of guard
 # FLAG ... the lane says: <action> Y/N [N]"; y approves (recorded with who

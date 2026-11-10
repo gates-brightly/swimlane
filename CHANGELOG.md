@@ -41,7 +41,7 @@ history stays here, since `swim changelog --since` reads it.
 **What changed for you**
 
 - A guard says what it does and why: `# Guards: FLAG  <does>`, then `#   why: <reason, date>` under it; the approval asks both.
-- `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy).
+- `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy). `guard FLAG "<text>"` goes in the first release on or after 2026-12-01.
 - `swim archive` refuses a committed lane instead of stubbing it; no swim writes stubs any more.
 - `run`, step's old name, is gone: a lane that still calls it fails ("run: command not found").
 
