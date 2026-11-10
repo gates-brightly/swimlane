@@ -337,6 +337,29 @@ func (tr *tuiRun) waitQueueRow(seq int, state string, more ...string) string {
 	})
 }
 
+// A waiting batch's row on the watch screen says why it waits: its lane
+// is running in another swim run, or an older batch has it. Once the lane
+// is free, both run.
+func TestWatchSaysWhyABatchWaits(t *testing.T) {
+	r := newSerialRepo(t)
+	r.script(1, "holds", `step "hold" `+hold("go"))
+	r.script(2, "two", `step "two" true`)
+	run := start(t, r.cmd(bin, "run", "1", "--plain"), nil)
+	r.waitStep(t, 1, "hold")
+	r.mustSwim("queue", "add", "1")
+	r.mustSwim("queue", "add", "1", "2")
+	tr := r.startTUI(nil, "watch")
+	tr.waitQueueRow(1, "queued", fmt.Sprintf("waits: lane 1 is running (pid %d)", laneOf(r, 1).PID))
+	tr.waitQueueRow(2, "queued", "waits: an older batch, #1, has lane 1")
+	r.release("go")
+	run.wait(t)
+	tr.waitFor("#2 passed")
+	tr.send("\x03")
+	if code, _ := tr.wait(); code != 0 {
+		t.Errorf("exit %d after ctrl-c", code)
+	}
+}
+
 // With two swim watch screens up, a batch submitted on one runs on that
 // one: its Ctrl-C is the one that stops it, not the other screen's. Only
 // the screen running a batch notes how it ended.

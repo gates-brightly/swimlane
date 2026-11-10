@@ -528,10 +528,13 @@ swim queue show|rm|requeue ID
             warns. The entry records the swim that queued it (swim).
   list      waiting, running and orphaned entries, and the last 5 consumed
             (--all: every one); --yaml for scripts (schema swim.queue-list/v1).
-            A batch a watcher leaves queued says why ("left queued: ...").
-            Its last line names the watchers up and what their lanes run
-            on ("watcher: zach-mbp, darwin/arm64, bash 3.2"), or with none
-            up the last one seen (.swim/watcher.yml); --yaml: watchers:
+            A batch a watcher leaves queued says why ("left queued: ..."),
+            and a waiting one what it waits for ("waits: lane 2 is running
+            (pid 4121)", "waits: an older batch, #3, has lane 4"); --yaml
+            carries it as waits:. Its last line names the watchers up and
+            what their lanes run on ("watcher: zach-mbp, darwin/arm64, bash
+            3.2"), or with none up the last one seen (.swim/watcher.yml);
+            --yaml: watchers:
   show ID   the entry file; ID is its id, a 4+ character prefix, or #seq
   rm ID     remove an entry that isn't running
   requeue ID  put an orphaned (its watcher died) or consumed entry back at the

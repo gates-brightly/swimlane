@@ -750,10 +750,13 @@ func queueList(args []string) error {
 		}
 		entries = append(done, rest...)
 	}
+	held := heldReasons(root)
+	waits := queueWaits(root, entries, held)
 	if asYAML {
 		type row struct {
 			*queue.Entry `yaml:",inline"`
 			State        string `yaml:"state"`
+			Waits        string `yaml:"waits,omitempty"`
 		}
 		var rows []row
 		for _, e := range entries {
@@ -761,7 +764,7 @@ func queueList(args []string) error {
 			if state == queue.Done && e.Result != nil {
 				state = e.Result.Result // an ended batch: how it ended
 			}
-			rows = append(rows, row{e, state})
+			rows = append(rows, row{e, state, waits[e.ID]})
 		}
 		doc := map[string]any{"schema": "swim.queue-list/v1", "entries": rows}
 		if ws := watchers(root); len(ws) > 0 {
@@ -779,7 +782,6 @@ func queueList(args []string) error {
 		fmt.Println("queue is empty. Queue a batch: swim queue N|ROUND-ID ... [--approve FLAG]")
 		return nil
 	}
-	held := heldReasons(root)
 	for _, e := range entries {
 		var ns []string
 		for _, l := range e.Lanes {
@@ -809,9 +811,23 @@ func queueList(args []string) error {
 		fmt.Printf("#%-3d %s  %s  lane %s%s  %s\n", e.Seq, e.ID, p.Paint(color, state), strings.Join(ns, ","), appr, p.Paint(ui.Dim, e.Note))
 		if why := held[e.ID]; why != "" && e.State == queue.Queued {
 			fmt.Println("     " + p.Paint(ui.Red, "left queued: "+why))
+		} else if why := waits[e.ID]; why != "" {
+			fmt.Println("     " + p.Paint(ui.Yellow, "waits: "+why))
 		}
 	}
 	return nil
+}
+
+// queueWaits is why each queued batch in entries waits (batchWaits), as
+// the watcher decides it: side by side unless watch_batches is 1. A
+// batch a live watcher holds (held) waits for one that can run it, which
+// left queued says instead.
+func queueWaits(root string, entries []*queue.Entry, held map[string]string) map[string]string {
+	cfg, err := loadCfg(root)
+	if err != nil {
+		return nil
+	}
+	return batchWaits(root, cfg, cfg.WatchBatchesFor() < 2, entries, func(e *queue.Entry) bool { return held[e.ID] != "" })
 }
 
 func queueShow(args []string) error {

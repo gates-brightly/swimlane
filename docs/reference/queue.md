@@ -28,7 +28,10 @@ swim wait [--timeout D]                 # until nothing runs or is queued
 
 - Runs batches side by side as their lanes come free: none in another
   batch or run. Oldest first, but a later batch whose lanes are free goes
-  ahead. Up to `--batches N` (`watch_batches`, 4) at once.
+  ahead. Up to `--batches N` (`watch_batches`, 4) at once. A waiting
+  batch says what it waits for, on the watch screen and in `swim queue`
+  (`--yaml`: `waits:`): `waits: lane 2 is running (pid 4121)`, `waits:
+  lane 2 is in batch #5`, `waits: an older batch, #3, has lane 4`.
 - **Asks for guards on its screen:** a guard nothing else approved waits
   under a yellow `Waiting for you` bar; `y`/`n` answers it. Without the
   screen (`--plain`, not a terminal) a batch never asks: its guards

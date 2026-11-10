@@ -486,6 +486,47 @@ step "%[1]s end" bash -c 'echo "%[1]s.end" >> "$SWIM_ROOT/order"'`, name, work)
 	}
 }
 
+// A waiting batch says why it waits, as the watcher's scheduler decides:
+// its lane is running in another swim run, or an older batch has it. swim
+// queue says it under the entry, --yaml as waits:; a batch nothing is in
+// the way of says nothing.
+func TestQueueSaysWhyABatchWaits(t *testing.T) {
+	r := newRepo(t)
+	r.script(1, "holds", `step "hold" `+hold("go"))
+	r.script(2, "two", `step "two" true`)
+	r.script(3, "three", `step "three" true`)
+	run := start(t, r.cmd(bin, "run", "1", "--plain"), nil)
+	r.waitStep(t, 1, "hold")
+	r.mustSwim("queue", "add", "1")
+	r.mustSwim("queue", "add", "1", "2")
+	r.mustSwim("queue", "add", "3")
+
+	out := r.mustSwim("queue")
+	pid := laneOf(r, 1).PID
+	contains(t, "swim queue", out, fmt.Sprintf("waits: lane 1 is running (pid %d)", pid), "waits: an older batch, #1, has lane 1")
+	if n := strings.Count(out, "waits:"); n != 2 {
+		t.Errorf("%d waits: lines, want 2 (batch #3 is free):\n%s", n, out)
+	}
+	var doc struct {
+		Entries []struct {
+			Seq   int    `yaml:"seq"`
+			Waits string `yaml:"waits"`
+		} `yaml:"entries"`
+	}
+	if err := yaml.Unmarshal([]byte(r.mustSwim("queue", "--yaml")), &doc); err != nil {
+		t.Fatal(err)
+	}
+	waits := map[int]string{}
+	for _, e := range doc.Entries {
+		waits[e.Seq] = e.Waits
+	}
+	if want := fmt.Sprintf("lane 1 is running (pid %d)", pid); waits[1] != want || waits[2] != "an older batch, #1, has lane 1" || waits[3] != "" {
+		t.Errorf("--yaml waits: %v", waits)
+	}
+	r.release("go")
+	run.wait(t)
+}
+
 // T39: a batch that approves none of its lanes' guards warns on stderr,
 // naming each lane and the guards that will dry-run, and how to approve
 // them; --approve doesn't warn.

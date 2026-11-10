@@ -158,64 +158,96 @@ func (b *batchRunner) reap() []*batchProc {
 }
 
 // startable lists the waiting batches that may start now, in start-time
-// order (queue.SortWaiting), as many as there's room for: none of the lanes
-// it runs (its own, and the Always lanes they pull in) in a running batch
-// (any worker's), running in another swim, or in a batch picked before it.
+// order (queue.SortWaiting), as many as there's room for: those batchWaits
+// finds nothing in the way of. A batch this worker can't run is held for
+// one that can.
 func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*queue.Entry {
 	b.mu.Lock()
 	room := b.max - len(b.procs)
 	b.mu.Unlock()
 	waiting = append([]*queue.Entry(nil), waiting...)
 	queue.SortWaiting(waiting)
-	// A batch needs its own lanes and the Always lanes its run pulls in
-	// (After: 1 on an Always lane 1): two batches that both pull in lane 1
-	// can't run side by side, or the second finds it already running and
-	// fails at once.
-	needs := func(e *queue.Entry) []int {
-		var ns []int
-		for _, l := range e.Lanes {
-			ns = append(ns, l.Lane)
-		}
-		return ns
-	}
-	taken := map[int]bool{}
+	held := map[string]bool{}
 	for _, e := range waiting {
-		if e.State == queue.Running {
-			for _, n := range needs(e) {
-				taken[n] = true
-			}
+		if e.State == queue.Queued {
+			why := cantRunHere(b.root, e)
+			holdHere(b.root, e, why) // queued for a worker that can; holds no lanes here
+			held[e.ID] = why != ""
 		}
 	}
-	st, _ := status.Load(b.root)
+	waits := batchWaits(b.root, cfg, false, waiting, func(e *queue.Entry) bool { return held[e.ID] })
 	var out []*queue.Entry
 	for _, e := range waiting {
 		if room <= 0 {
 			break
 		}
-		if e.State != queue.Queued {
-			continue
-		}
-		if why := cantRunHere(b.root, e); why != "" {
-			holdHere(b.root, e, why) // queued for a worker that can; holds no lanes here
-			continue
-		}
-		holdHere(b.root, e, "")
-		free := true
-		need := needs(e)
-		for _, n := range need {
-			if taken[n] || laneBusy(b.root, st, n) != "" {
-				free = false
-			}
-		}
-		// Its lanes count as taken either way: a later batch doesn't get
-		// ahead of this one on the lanes they share.
-		for _, n := range need {
-			taken[n] = true
-		}
-		if free {
+		if e.State == queue.Queued && !held[e.ID] && waits[e.ID] == "" {
 			out = append(out, e)
 			room--
 		}
+	}
+	return out
+}
+
+// batchWaits says, for each queued batch in waiting, why it can't start
+// yet ("" when nothing is in the way): what the watcher's scheduler
+// (startable) decides, and what swim queue and the watch screen show.
+// Side by side, one of its lanes is in a running batch (any watcher's),
+// running in another swim run (laneBusy), or in an older waiting batch,
+// which goes first: a later batch doesn't get ahead of it on the lanes
+// they share. One at a time (serial: --batches 1), the oldest waits for
+// every lane to be free (launcher.Busy) and the rest wait for it. A held
+// batch (held: no watcher here can run it) takes no turn.
+func batchWaits(root string, cfg *config.Config, serial bool, waiting []*queue.Entry, held func(*queue.Entry) bool) map[string]string {
+	waiting = append([]*queue.Entry(nil), waiting...)
+	queue.SortWaiting(waiting)
+	taken := map[int]int{} // lane -> the batch (#seq) running it, or an older one waiting for it
+	running := map[int]bool{}
+	for _, e := range waiting {
+		if e.State == queue.Running {
+			for _, l := range e.Lanes {
+				taken[l.Lane], running[l.Lane] = e.Seq, true
+			}
+		}
+	}
+	st, _ := status.Load(root)
+	out := map[string]string{}
+	first := 0 // serial: the oldest waiting batch
+	for _, e := range waiting {
+		if e.State != queue.Queued || held != nil && held(e) {
+			continue
+		}
+		why := ""
+		switch {
+		case serial && first != 0:
+			why = fmt.Sprintf("an older batch, #%d, runs first", first)
+		case serial:
+			why = launcher.Busy(root, cfg)
+		default:
+			for _, l := range e.Lanes {
+				seq, ok := taken[l.Lane]
+				switch {
+				case ok && running[l.Lane]:
+					why = fmt.Sprintf("lane %d is in batch #%d", l.Lane, seq)
+				case ok:
+					why = fmt.Sprintf("an older batch, #%d, has lane %d", seq, l.Lane)
+				default:
+					why = laneBusy(root, st, l.Lane)
+				}
+				if why != "" {
+					break
+				}
+			}
+			for _, l := range e.Lanes {
+				if _, ok := taken[l.Lane]; !ok {
+					taken[l.Lane] = e.Seq
+				}
+			}
+		}
+		if first == 0 {
+			first = e.Seq
+		}
+		out[e.ID] = why
 	}
 	return out
 }

@@ -44,6 +44,7 @@ history stays here, since `swim changelog --since` reads it.
 - `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy). `guard FLAG "<text>"` goes in the first release on or after 2026-12-01.
 - `swim archive` refuses a committed lane instead of stubbing it; no swim writes stubs any more.
 - `swim log N --failed`: just the failed steps of the round, output in full; bare `swim` points at it.
+- A waiting batch says what it waits for, on the watch screen and in `swim queue`: `waits: lane 2 is running (pid 4121)`.
 - `run`, step's old name, is gone: a lane that still calls it fails ("run: command not found").
 - `swim queue` and `swim status` say what the watcher's lanes run on: `watcher: zach-mbp, darwin/arm64, bash 3.2`.
 
@@ -94,6 +95,13 @@ history stays here, since `swim changelog --since` reads it.
   one seen (`.swim/watcher.yml`), marked `up: false` and "none up; last
   seen ...". An agent in a Linux sandbox can see its lanes will run on
   darwin with bash 3.2 instead of assuming its own machine.
+- **A waiting batch says why it waits:** its row on the watch screen and
+  its entry in `swim queue` end with what's in the way, as the watcher's
+  scheduler decides it: `waits: lane 2 is running (pid 4121)` (or waiting
+  in another swim run), `waits: lane 2 is in batch #5`, `waits: an older
+  batch, #3, has lane 4`. With `--batches 1`, the oldest waits for every
+  lane to be free and the rest say `an older batch, #3, runs first`.
+  `swim queue --yaml` carries it as `waits:`.
 - **Why a guard is there:** a `#   why: <reason>` line right under a
   `# Guards: FLAG  <what it does>` line says why the change is made. The
   approval prompt, `swim watch`, its notifications (and the phone's) and

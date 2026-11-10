@@ -283,6 +283,9 @@ func (w *watchView) rows() []display.PickRow {
 		rows = append(rows, display.PickRow{Text: "(empty: q on lanes, then s, queues them as one batch)", Color: ui.Dim})
 	}
 	queue.SortWaiting(entries)
+	// Why each waiting batch waits, as this watcher's scheduler decides it.
+	held := heldReasons(w.root)
+	waits := batchWaits(w.root, w.cfg, w.batches == nil, entries, func(e *queue.Entry) bool { return held[e.ID] != "" })
 	anyRunning := false
 	for _, e := range entries {
 		anyRunning = anyRunning || e.State == queue.Running
@@ -319,6 +322,11 @@ func (w *watchView) rows() []display.PickRow {
 		b.add(ui.Dim, "  by "+e.By)
 		if e.Note != "" {
 			b.add("", "  "+ui.Safe(e.Note))
+		}
+		if why := held[e.ID]; why != "" && state == queue.Queued {
+			b.add(ui.Red, "  · left queued: "+why)
+		} else if why := waits[e.ID]; why != "" {
+			b.add(ui.Yellow, "  · waits: "+why)
 		}
 		rows = append(rows, b.row("queue:"+e.ID, color))
 	}
