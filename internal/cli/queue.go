@@ -445,11 +445,11 @@ type queueOpts struct {
 	approve  []string
 	note     string
 	parallel *int
-	// carry is set for a requeued batch: the manifest each lane was queued
-	// with. A flag in approve is then kept only if every lane here that
-	// holds its guard still has that manifest; the others are dropped (not
-	// refused) and named in the batch's dropped.
-	carry map[int]string
+	// carry is set for a requeued batch: each lane as it was queued (its
+	// manifest and env). A flag in approve is then kept only if every lane
+	// here that holds its guard has neither changed; the others are dropped
+	// (not refused) and named in the batch's dropped.
+	carry map[int]queue.Lane
 }
 
 // askingSwimmer is the first of the live watchers whose screen asks the
@@ -563,8 +563,8 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 // approve (each must name one of those guards: a typo would otherwise
 // approve nothing, silently). With carry (a requeue, queueOpts.carry) a
 // flag is kept only where every lane holding its guard is pinned to the
-// manifest carry names; the rest come back as dropped, with why.
-func pinBatch(root string, cfg *config.Config, lanes []int, approve []string, carry map[int]string) ([]queue.Lane, []string, map[string]bool, []string, error) {
+// manifest and env carry names; the rest come back as dropped, with why.
+func pinBatch(root string, cfg *config.Config, lanes []int, approve []string, carry map[int]queue.Lane) ([]queue.Lane, []string, map[string]bool, []string, error) {
 	var pinned []queue.Lane
 	guards := map[string]bool{}
 	holders := map[string][]queue.Lane{} // flag -> the lanes whose guard it is
@@ -591,7 +591,7 @@ func pinBatch(root string, cfg *config.Config, lanes []int, approve []string, ca
 			// A lane left out (it passed) took its guards with it.
 			var changed []string
 			for _, l := range holders[f] {
-				if l.Manifest == "" || carry[l.Lane] != l.Manifest {
+				if !sameApproval(carry[l.Lane], l) {
 					changed = append(changed, strconv.Itoa(l.Lane))
 				}
 			}
@@ -613,7 +613,7 @@ func pinBatch(root string, cfg *config.Config, lanes []int, approve []string, ca
 // requeueFailed queues, as a new batch, the lanes of finished batch e that
 // didn't pass (failed, interrupted, skipped, or never ended), pinned to
 // their scripts as they are now: the fix. e's approvals go with it only
-// for lanes whose manifest hasn't changed (queueOpts.carry). The lanes
+// for lanes whose manifest and env haven't changed (queueOpts.carry). The lanes
 // that passed are left out, and an # After: on one of them is met, as for
 // any lane outside a run whose round passed.
 func requeueFailed(root string, cfg *config.Config, e *queue.Entry) (batch, error) {
@@ -621,14 +621,23 @@ func requeueFailed(root string, cfg *config.Config, e *queue.Entry) (batch, erro
 		return batch{}, fmt.Errorf("#%d is %s: --failed requeues what didn't pass of a finished batch (swim queue requeue %d runs all of it again)", e.Seq, e.State, e.Seq)
 	}
 	lanes := notPassed(e)
-	carry := map[int]string{}
+	carry := map[int]queue.Lane{}
 	for _, l := range e.Lanes {
-		carry[l.Lane] = l.Manifest
+		carry[l.Lane] = l
 	}
 	if len(lanes) == 0 {
 		return batch{}, fmt.Errorf("every lane of #%d passed: nothing to requeue", e.Seq)
 	}
 	return addBatch(root, cfg, lanes, queueOpts{approve: e.Approve, note: fmt.Sprintf("what didn't pass of #%d", e.Seq), parallel: e.Parallel, carry: carry})
+}
+
+// sameApproval reports whether an approval given for lane was (as queued)
+// still covers it as pinned now (now): the same manifest and the same env
+// files' hash, which manifest_sha256 leaves out. A lane missing either
+// (an entry from an older swim) doesn't qualify.
+func sameApproval(was, now queue.Lane) bool {
+	return now.Manifest != "" && was.Manifest == now.Manifest &&
+		was.EnvSHA256 != nil && now.EnvSHA256 != nil && *was.EnvSHA256 == *now.EnvSHA256
 }
 
 // pinLane is lane n as a queue entry holds it: its job and round, pinned

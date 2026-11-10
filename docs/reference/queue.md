@@ -25,8 +25,10 @@ swim wait [--timeout D]                 # until nothing runs or is queued
 - **After a fix:** `swim queue requeue ID --failed` queues a finished
   batch's lanes that didn't pass as a new batch, pinned to their scripts
   as they are now. The lanes that passed stay out (an `# After:` on one
-  is met). Approvals go with it only for lanes whose manifest hasn't
-  changed: a fixed lane's guard is asked again, or dry-runs.
+  is met). Approvals go with it only for lanes whose manifest and env
+  files' hash haven't changed, as `--approve` covered both: a fixed lane,
+  or one whose env moved (staging to prod), has its guard asked again, or
+  dry-runs.
 - **A window:** queue now, start `swim watch --once` when it opens (by
   hand or cron).
 

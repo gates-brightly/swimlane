@@ -545,7 +545,8 @@ swim queue requeue ID --failed   what didn't pass, as a new batch
                       to their scripts as they are now (the fix). The lanes
                       that passed stay out, and # After: on one is met. Its
                       approvals go with it only for lanes whose manifest
-                      hasn't changed; it names the ones it didn't carry.
+                      and env files' hash haven't changed; it names the
+                      ones it didn't carry.
                       On swim watch's screen, r on a finished batch does it.
   A claimed entry is orphaned when its watcher is gone: on the watcher's host,
   its process (pid and start time) is; from another host sharing the queue,

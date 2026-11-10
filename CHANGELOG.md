@@ -107,7 +107,8 @@ history stays here, since `swim changelog --since` reads it.
   batch's lanes that didn't pass (failed, interrupted, skipped) as a new
   batch, pinned to their scripts as they are now. The lanes that passed
   stay out, and an `# After:` on one is met. The batch's approvals go
-  with it only for lanes whose manifest hasn't changed; it names the
+  with it only for lanes whose manifest and env files' hash haven't
+  changed (what `--approve` covered); it names the
   ones it didn't carry ("not carried: FLAG (lane 2 changed since it was
   queued)"), so a fixed lane's guard is asked again or dry-runs. On
   `swim watch`'s screen, a batch that ended without passing stays

@@ -282,6 +282,27 @@ step "ready" true`)
 	if run := r.status().Get(1).Run; run != ran1 {
 		t.Errorf("lane 1 ran again (run %s)", run)
 	}
+
+	// Same script, a changed env file (staging to prod): the approval
+	// covered the env too, so it stays behind.
+	r.script(2, "backfill", `if guard ALLOW_FIX; then step "fixed" true; fi
+step "ready" test -e "$SWIM_ROOT/ready"`)
+	withHeader(t, r, 2, "# Guards:  ALLOW_FIX backfill the rows")
+	r.after(2, "1")
+	os.Remove(filepath.Join(r.root, "ready"))
+	envFiles(t, r, "", "[lane 2]\nTARGET=staging\n")
+	r.mustSwim("queue", "2", "--approve", "ALLOW_FIX")
+	r.swim("watch", "--once", "--plain")
+	if e := last(); e.Seq != 5 || e.Result == nil || e.Result.Result == "passed" {
+		t.Fatalf("batch 5: %+v", e.Result)
+	}
+	r.write("ready", "", 0o644)
+	r.write(".env.swim", "[lane 2]\nTARGET=prod\n", 0o600)
+	out = r.mustSwim("queue", "requeue", "5", "--failed")
+	contains(t, "requeue after an env change", out, "as #6", "not carried: ALLOW_FIX (lane 2 changed since it was queued)")
+	if strings.Contains(out, "approvals:") {
+		t.Errorf("an approval was carried across an env change:\n%s", out)
+	}
 }
 
 func hostname() string {
