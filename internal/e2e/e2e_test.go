@@ -1188,7 +1188,7 @@ func TestLanesInUse(t *testing.T) {
 	if strings.Contains(st, "lane 3") {
 		t.Errorf("status shows a lane not in use:\n%s", st)
 	}
-	// Archived (its log kept, its script a stub), it isn't in use.
+	// Archived (its log kept, its script removed), it isn't in use.
 	r.mustSwim("archive", "6", "done")
 	if st := r.mustSwim("status"); strings.Contains(st, "lane 6") {
 		t.Errorf("status after archive 6 still shows it:\n%s", st)

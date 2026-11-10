@@ -46,8 +46,8 @@ func TestRunningAndRefusals(t *testing.T) {
 	if _, err := Archive(root, 1, "x"); !errors.As(err, &er) {
 		t.Fatalf("Archive on running lane: %v", err)
 	}
-	if err := WriteScript(root, 1, "x", true); !errors.As(err, &er) {
-		t.Fatalf("WriteScript on running lane: %v", err)
+	if err := WriteScriptAs(root, 1, "sh", "x", true); !errors.As(err, &er) {
+		t.Fatalf("WriteScriptAs on running lane: %v", err)
 	}
 	RemovePID(root, 1)
 	if _, ok := Running(root, 1); ok {
@@ -80,13 +80,13 @@ func TestArchive(t *testing.T) {
 
 func TestWriteScriptRefusesPending(t *testing.T) {
 	root := t.TempDir()
-	if err := WriteScript(root, 1, "# Round: A\n", false); err != nil {
+	if err := WriteScriptAs(root, 1, "sh", "# Round: A\n", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteScript(root, 1, "# Round: B\n", false); err == nil {
+	if err := WriteScriptAs(root, 1, "sh", "# Round: B\n", false); err == nil {
 		t.Fatal("expected refusal to replace pending round")
 	}
-	if err := WriteScript(root, 1, "# Round: B\n", true); err != nil {
+	if err := WriteScriptAs(root, 1, "sh", "# Round: B\n", true); err != nil {
 		t.Fatal(err)
 	}
 	st, _ := os.Stat(Script(root, 1))
