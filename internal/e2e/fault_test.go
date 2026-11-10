@@ -19,7 +19,6 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/failpoint"
@@ -55,20 +54,22 @@ func failpointBin(t *testing.T) string {
 	return fpBin
 }
 
-// ledgerEnv names the file lanes append their timestamps to, through the
-// test binary itself (stampMain): bash 3.2 has no clock finer than a
-// second, and the checks compare start and end times across lanes.
+// ledgerEnv names the file lanes append their stamps to, through the test
+// binary itself (stampMain). The checks order the stamps by their place in
+// the file, not by a clock: an O_APPEND file is one order every process
+// agrees on, and the wall clock isn't (a VM's steps back when it's
+// resynced, so two lanes run back to back read as overlapping).
 const ledgerEnv = "SWIM_E2E_LEDGER"
 
 // stampMain is the test binary run as `<test> stamp LANE WHAT` from a
-// lane: it appends "RUN LANE WHAT UNIXNANO" to the ledger in one write
-// (O_APPEND: lines from concurrent lanes never mix) and exits.
+// lane: it appends "RUN LANE WHAT" to the ledger in one write (O_APPEND:
+// lines from concurrent lanes never mix) and exits.
 func stampMain(args []string) {
 	if len(args) != 2 {
 		fmt.Fprintln(os.Stderr, "usage: stamp LANE WHAT")
 		os.Exit(2)
 	}
-	line := fmt.Sprintf("%s %s %s %d\n", or(os.Getenv("SWIM_RUN"), "-"), args[0], args[1], time.Now().UnixNano())
+	line := fmt.Sprintf("%s %s %s\n", or(os.Getenv("SWIM_RUN"), "-"), args[0], args[1])
 	f, err := os.OpenFile(os.Getenv(ledgerEnv), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err == nil {
 		_, err = f.WriteString(line)
@@ -103,7 +104,7 @@ func withLedger(t *testing.T, r *repo) (path string, stamp func(n int, what stri
 	}
 }
 
-// stamp is one ledger line.
+// stamp is one ledger line; at is its place in the ledger, from 1.
 type stamp struct {
 	run  string
 	lane int
@@ -120,17 +121,17 @@ func readLedger(t *testing.T, path string) []stamp {
 	var out []stamp
 	for _, l := range strings.Split(strings.TrimSpace(string(data)), "\n") {
 		f := strings.Fields(l)
-		if len(f) != 4 {
+		if len(f) != 3 {
 			continue
 		}
 		n, _ := strconv.Atoi(f[1])
-		at, _ := strconv.ParseInt(f[3], 10, 64)
-		out = append(out, stamp{f[0], n, f[2], at})
+		out = append(out, stamp{f[0], n, f[2], int64(len(out) + 1)})
 	}
 	return out
 }
 
-// interval is one lane round's time between its start and end stamps.
+// interval is one lane round, from its start stamp to its end stamp (their
+// places in the ledger).
 type interval struct {
 	run        string
 	lane       int

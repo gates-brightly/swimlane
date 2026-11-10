@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -426,28 +425,28 @@ func TestWatchBatchesSideBySide(t *testing.T) {
 	r := newRepo(t)
 	// work is the middle step: side by side, swim 1's holds until swim 2
 	// has started (the test releases it then), so the two overlap however
-	// slow the machine.
+	// slow the machine. Each step appends its name to one file: the order
+	// of its lines, not a clock, says what ran first (fault_test.go's
+	// ledgerEnv says why).
 	stamp := func(name, work string) string {
-		return fmt.Sprintf(`step "%[1]s start" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.start"'
+		return fmt.Sprintf(`step "%[1]s start" bash -c 'echo "%[1]s.start" >> "$SWIM_ROOT/order"'
 step "%[1]s work" %[2]s
-step "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
+step "%[1]s end" bash -c 'echo "%[1]s.end" >> "$SWIM_ROOT/order"'`, name, work)
 	}
 	r.script(1, "slow one", stamp("one", hold("two-started")))
 	r.script(2, "two", stamp("two", "true"))
-	times := func(name string) []float64 {
-		data, _ := os.ReadFile(filepath.Join(r.root, name))
-		var out []float64
-		for _, f := range strings.Fields(string(data)) {
-			v, _ := strconv.ParseFloat(f, 64)
-			out = append(out, v)
+	// times are the places (from 1) of name's lines in the order file.
+	times := func(name string) []int {
+		data, _ := os.ReadFile(filepath.Join(r.root, "order"))
+		var out []int
+		for i, f := range strings.Fields(string(data)) {
+			if f == name {
+				out = append(out, i+1)
+			}
 		}
 		return out
 	}
-	reset := func() {
-		for _, f := range []string{"one.start", "one.end", "two.start", "two.end"} {
-			os.Remove(filepath.Join(r.root, f))
-		}
-	}
+	reset := func() { os.Remove(filepath.Join(r.root, "order")) }
 
 	// Side by side: 2 starts before 1 ends; a second batch of lane 1 waits
 	// for the first.
@@ -467,10 +466,10 @@ step "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 		t.Fatalf("starts %v ends %v two %v\n%s", one, oneEnd, two, out)
 	}
 	if two[0] >= oneEnd[0] {
-		t.Errorf("batch 3 (lane 2) waited for batch 1 (lane 1): started %.1fs after it ended", two[0]-oneEnd[0])
+		t.Errorf("batch 3 (lane 2) waited for batch 1 (lane 1): it started after it ended")
 	}
 	if one[1] < oneEnd[0] {
-		t.Errorf("two batches of lane 1 overlapped: the second started %.1fs before the first ended", oneEnd[0]-one[1])
+		t.Errorf("two batches of lane 1 overlapped: the second started before the first ended")
 	}
 	if done := doneEntries(t, r); len(done) != 3 {
 		t.Fatalf("consumed %d of 3", len(done))
