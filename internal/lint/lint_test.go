@@ -532,8 +532,8 @@ func TestGuardDescriptions(t *testing.T) {
 	}
 	for name, tc := range map[string]struct{ script, want string }{
 		"no why":          {header("# Guards: ALLOW_DROP  drop the old table\n"), "guard-why"},
-		"why too far":     {header("# Guards: ALLOW_DROP  drop the old table\n# Timeout: 1h\n#   why: migrated\n"), "guard-why"},
-		"vague":           {header("# Guards: ALLOW_DROP  cleanup\n#   why: migrated\n"), "guard-does"},
+		"why too far":     {header("# Guards: ALLOW_DROP  drop the old table\n# Timeout: 1h\n#   why: migrated\n"), "guard-why guard-why"},
+		"short is fine":   {header("# Guards: ALLOW_DROP  cleanup\n#   why: migrated\n"), ""},
 		"long":            {header("# Guards: ALLOW_DROP  drop the old table " + strings.Repeat("and more ", 12) + "\n#   why: migrated\n"), "guard-does"},
 		"placeholder why": {header("# Guards: ALLOW_DROP  drop the old table\n#   why: <why this change is made, with its date>\n"), "guard-why"},
 		"repeats":         {replace(clean(1), "if guard ALLOW_DROP; then", `if guard ALLOW_DROP "drop the old table"; then`), "guard-text"},
@@ -542,5 +542,42 @@ func TestGuardDescriptions(t *testing.T) {
 		if fs := Lint(cfg4(), map[int]string{1: tc.script}, 1); codes(fs) != tc.want {
 			t.Errorf("%s: got [%s], want [%s]: %+v", name, codes(fs), tc.want, fs)
 		}
+	}
+}
+
+// --fix drops a guard call's text only from a call the parser reads as
+// one: never from a heredoc's body, a string over several lines, a
+// comment, or a line a \ continues.
+func TestFixShortensOnlyCalls(t *testing.T) {
+	root := t.TempDir()
+	src := `#!/usr/bin/env bash
+# swim: syntax 4
+# Round: fix me
+# Guards: ALLOW_A  drop table a
+#   why: it moved
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
+lane_init 1
+cat <<EOF
+if guard ALLOW_A "drop table a"; then
+EOF
+note="
+guard ALLOW_A "drop table a"
+"
+# guard ALLOW_A "drop table a"
+step "x" echo \
+  guard ALLOW_A "drop table a"
+if guard ALLOW_A "drop table a"; then step a true; fi
+summary
+`
+	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte(src), 0o755)
+	cfg := &config.Config{Root: root, Settings: config.Settings{Lanes: 1}}
+	fixed, err := Fix(root, cfg, []int{1})
+	if err != nil || len(fixed) != 1 || fmt.Sprint(fixed[0].Shortened) != "[17]" {
+		t.Fatalf("fixed: %+v %v", fixed, err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, "lane.1.sh"))
+	want := strings.Replace(src, `if guard ALLOW_A "drop table a"; then step a`, `if guard ALLOW_A; then step a`, 1)
+	if string(got) != want {
+		t.Errorf("script:\n%s", got)
 	}
 }

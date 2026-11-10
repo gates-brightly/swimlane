@@ -370,10 +370,11 @@ swim archive --passed ["<note>"]
 
   Tidy lanes whose rounds have ended: rename each lane's
   .swim/logs/laneN.log to laneN.prev-<NAME>.log in the same directory,
-  and remove its lane.N.sh (one git tracks, a committed CI lane, becomes a
-  "nothing ready" stub instead). The slot is empty: status shows the lane
-  empty with <note> (default: where the log went), swim run skips it, and
-  swim new takes it for the next round. swim archive 1 2 3 "shipped" tidies lanes 1, 2 and 3. Every
+  and remove its lane.N.sh (the chain keeps a copy). The slot is empty:
+  status shows the lane empty with <note> (default: where the log went),
+  swim run skips it, and swim new takes it for the next round. A committed
+  lane (git tracks its script, as a repo's CI lanes) isn't archived:
+  its next run replaces its log; --passed leaves it out. swim archive 1 2 3 "shipped" tidies lanes 1, 2 and 3. Every
   argument is a lane number or a round id (the lane whose script holds that
   round or that last ran it); the words after them are the note. NAME is
   slugified; without --as each archive is named after its round id.
@@ -815,7 +816,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                               out/, checkpoints/, earmarks/, lane1.2.claim,
                               ...)
     stub (warn)               a lane.N.sh stub an older swim archive left
-                              (untracked, not running)
+                              (--fix deletes it unless git tracks it)
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
                               older than 14 days, of no lane's latest round
     remote-running (warn)     a lane has run on another machine sharing the

@@ -52,11 +52,11 @@ func TestArchiveDone(t *testing.T) {
 	contains(t, "again", r.mustSwim("archive", "--passed"), "nothing to archive")
 }
 
-// A lane script git tracks (a committed CI lane) isn't deleted by archive:
-// it becomes a stub, as before, so no deletion gets committed by accident.
-// swim doctor --fix sweeps an untracked stub an older swim left, never a
-// tracked one.
-func TestArchiveTrackedAndOldStubs(t *testing.T) {
+// A committed lane (git tracks its script, as a repo's CI lanes) isn't
+// archived: swim archive N refuses it, and --passed and the "passed, not
+// archived" line leave it out. swim doctor --fix sweeps an untracked stub
+// an older swim left, and names a tracked one for git rm.
+func TestArchiveCommittedAndOldStubs(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "ci", `step "a" true`)
 	r.commitLanes("ci lane")
@@ -64,31 +64,41 @@ func TestArchiveTrackedAndOldStubs(t *testing.T) {
 	r.swim("all", "--plain")
 	contains(t, "passed, not archived", r.mustSwim(), "1 lane passed, not archived (lane 2)  → swim archive 2")
 
-	r.mustSwim("archive", "1", "2", "done")
-	contains(t, "tracked stub", readFile(t, r, "lane.1.sh"), "# swim:stub", "done")
+	if out, code := r.swim("archive", "1", "2", "done"); code == 0 || !strings.Contains(out, "lane 1 is committed") {
+		t.Fatalf("archive a committed lane: %d %s", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(r.root, "lane.2.sh")); err != nil {
+		t.Errorf("all or nothing: lane 2 was archived: %v", err)
+	}
+	out := r.mustSwim("archive", "--passed", "done")
+	contains(t, "--passed", out, "lane2.prev-")
+	if strings.Contains(out, "lane1.prev") {
+		t.Errorf("--passed archived the committed lane:\n%s", out)
+	}
 	if _, err := os.Stat(filepath.Join(r.root, "lane.2.sh")); !os.IsNotExist(err) {
 		t.Errorf("archive left lane.2.sh: %v", err)
 	}
-	if out := r.mustSwim(); strings.Contains(out, "not archived") {
-		t.Errorf("archived lanes still listed:\n%s", out)
+	if s := readFile(t, r, "lane.1.sh"); strings.Contains(s, "# swim:stub") {
+		t.Errorf("the committed lane was stubbed:\n%s", s)
 	}
 
-	// An older swim's stub, untracked.
+	// Stubs an older swim left: one untracked, one committed.
 	old := "#!/usr/bin/env bash\n# swim: syntax 4\n# swim:stub\n# old\necho nothing\n"
-	if err := os.WriteFile(filepath.Join(r.root, "lane.5.sh"), []byte(old), 0o755); err != nil {
-		t.Fatal(err)
+	for _, f := range []string{"lane.5.sh", "lane.6.sh"} {
+		if err := os.WriteFile(filepath.Join(r.root, f), []byte(old), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	out, _ := r.swim("doctor")
-	contains(t, "doctor", out, "lane.5.sh")
-	if strings.Contains(out, "lane.1.sh  warn") {
-		t.Errorf("doctor flags a tracked stub:\n%s", out)
-	}
+	r.git("add", "-f", "lane.6.sh")
+	r.git("commit", "-q", "-m", "an old stub")
+	out, _ = r.swim("doctor")
+	contains(t, "doctor", out, "lane.5.sh", "swim doctor --fix (deletes it)", "git rm lane.6.sh (swim never writes to git)")
 	r.swim("doctor", "--fix")
 	if _, err := os.Stat(filepath.Join(r.root, "lane.5.sh")); !os.IsNotExist(err) {
 		t.Errorf("doctor --fix left lane.5.sh: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(r.root, "lane.1.sh")); err != nil {
-		t.Errorf("doctor --fix removed the tracked stub: %v", err)
+	if _, err := os.Stat(filepath.Join(r.root, "lane.6.sh")); err != nil {
+		t.Errorf("doctor --fix removed a tracked stub: %v", err)
 	}
 }
 

@@ -120,7 +120,7 @@ var Checks = []Check{
 	{"step-pipe", finding.Error, false, "a pipe or redirect after a step, which applies to swim's output, not the step's command", checkStepPipe},
 	{"short-form", finding.Error, false, "a .sh lane that calls swim's steps without #!/usr/bin/env swim (or the library)", checkShortFormShebang},
 	{"guard-text", finding.Warn, false, "a guard call that gives its own text (guard FLAG \"...\"), repeating its # Guards: line or differing from it, or a # Guards: line with none", checkGuardText},
-	{"guard-does", finding.Warn, false, "a guard's # Guards: text that doesn't say what it changes in a line: fewer than 3 words, a placeholder, or over 100 characters", checkGuardDoes},
+	{"guard-does", finding.Warn, false, "a guard's # Guards: text that's still a placeholder, or over 100 characters (more than a line of the prompt)", checkGuardDoes},
 	{"guard-why", finding.Warn, false, "a declared guard with no `#   why:` line under its # Guards: line, saying why the change is made", checkGuardWhy},
 	{"destructive", finding.Warn, false, "a destructive-looking command outside a guard block", checkDestructive},
 	{"blocked", finding.Error, false, "a blocked command (blocked_commands)", checkBlocked},

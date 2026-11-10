@@ -96,7 +96,7 @@ func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
 			// With the header saying it (just added or not), a guard
 			// call's own copy of the text goes.
 			var short []int
-			lines, short = shortenGuards(lines, lane.ParseScript(strings.Join(lines, "\n")))
+			lines, short = shortenGuards(NewScript(n, strings.Join(lines, "\n")))
 			for _, i := range short {
 				fx.Shortened = append(fx.Shortened, i+1)
 			}
@@ -167,32 +167,50 @@ func guardAction(line, flag string) string {
 	return ""
 }
 
-// guardCallRE matches a guard call with its text: guard FLAG "<text>"
-// (or '<text>'); 1 is the flag, 2 the quoted text.
+// guardCallRE finds a guard call with its text on a line already parsed
+// as one: guard FLAG "<text>" (or '<text>'); 1 is the flag, 2 the text.
 var guardCallRE = regexp.MustCompile(`\bguard\s+([A-Za-z_][A-Za-z0-9_]*)\s+("(?:[^"\\$` + "`" + `]|\\.)*"|'[^']*')`)
 
-// shortenGuards rewrites each guard FLAG "<text>" whose text is what the
+// shortenGuards rewrites each guard FLAG "<text>" whose text is what s's
 // header says FLAG does to guard FLAG, and returns the lines and the
-// (0-based) ones it changed. Text that differs is left for a person.
-func shortenGuards(lines []string, info lane.Info) ([]string, []int) {
+// (0-based) ones it changed. It edits only a line that is code (not a
+// comment, a heredoc body or a string over several lines, nor one a \
+// continues or that continues one) and only a call the parser reads as
+// guard with that flag and text. Text that differs is left for a person.
+func shortenGuards(s *Script) ([]string, []int) {
+	lines := append([]string(nil), s.v.raw...)
 	header := map[string]string{}
-	for _, g := range info.Guards {
+	for _, g := range s.Info.Guards {
 		if !unwritten(g.Desc) {
 			header[g.Flag] = strings.Join(strings.Fields(g.Desc), " ")
 		}
 	}
+	// calls: the flags each code line calls guard with the header's text.
+	calls := func(line string) map[string]bool {
+		out := map[string]bool{}
+		for _, c := range lane.Commands(line) {
+			if len(c) == 3 && !c[0].Quoted && c[0].Text == "guard" && !c[1].Expands && !c[2].Expands &&
+				header[c[1].Text] != "" && header[c[1].Text] == strings.Join(strings.Fields(c[2].Text), " ") {
+				out[c[1].Text] = true
+			}
+		}
+		return out
+	}
 	var changed []int
 	for i, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "#") {
+		joined := strings.HasSuffix(strings.TrimRight(l, " \t"), "\\") || i > 0 && strings.HasSuffix(strings.TrimRight(lines[i-1], " \t"), "\\")
+		if !s.v.isCode(i) || s.v.inQuote[i] || joined {
+			continue
+		}
+		want := calls(l)
+		if len(want) == 0 {
 			continue
 		}
 		out := guardCallRE.ReplaceAllStringFunc(l, func(m string) string {
-			sub := guardCallRE.FindStringSubmatch(m)
-			text := guardAction(m, sub[1])
-			if hd, ok := header[sub[1]]; !ok || hd != strings.Join(strings.Fields(text), " ") {
-				return m
+			if sub := guardCallRE.FindStringSubmatch(m); want[sub[1]] && len(calls(m)) == 1 {
+				return "guard " + sub[1]
 			}
-			return "guard " + sub[1]
+			return m
 		})
 		if out != l {
 			lines[i] = out

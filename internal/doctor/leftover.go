@@ -185,15 +185,17 @@ func (o *Options) removeLeftover(f finding.Finding) (bool, error) {
 
 // checkStubs finds the "nothing ready" stubs an older swim archive left
 // in place of a lane's script: the lane is empty, so the file is clutter.
-// A stub git tracks (a committed CI lane's) stays.
+// --fix deletes one git doesn't track; one it does is the operator's to
+// git rm (swim never writes to git).
 func checkStubs(o *Options) []finding.Finding {
 	var out []finding.Finding
 	for _, p := range stubFiles(o.Root) {
+		fix := "swim doctor --fix (deletes it)"
 		if lane.Tracked(o.Root, p) {
-			continue
+			fix = "git rm " + o.rel(p) + " (swim never writes to git)"
 		}
-		out = append(out, fd(finding.Warn, "stub", o.rel(p), "swim doctor --fix (deletes it)",
-			"an archived lane's stub; swim archive no longer leaves one"))
+		out = append(out, fd(finding.Warn, "stub", o.rel(p), fix,
+			"an archived lane's stub, left by an older swim archive"))
 	}
 	return out
 }
