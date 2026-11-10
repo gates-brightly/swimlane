@@ -128,5 +128,7 @@ the AI never gets any of them.
   carries it: `swim guide`.
 - [What swim protects against](docs/reference/trust-model.md), and
   [why it exists](docs/reference/why.md).
+- [Decisions](docs/adr/README.md): why swim is built the way it is, and
+  what was rejected. Read the record before undoing one.
 
 MIT licensed. See [LICENSE](LICENSE).
