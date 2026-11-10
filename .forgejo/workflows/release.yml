@@ -16,6 +16,8 @@ name: release
 # that secret is set (a Forgejo access token with write:repository, for
 # when the automatic token can't publish releases), else the automatic one.
 #
+# A failure tells ntfy, as the test workflow does (NTFY_URL, NTFY_TOKEN).
+#
 # Forgejo runs only .forgejo/workflows when the directory exists, so
 # .github/workflows (GitHub's test and release) doesn't run here.
 
@@ -76,3 +78,11 @@ jobs:
           # Publish with the Gitea client even if the runner also sets
           # GITHUB_TOKEN.
           GORELEASER_FORCE_TOKEN: gitea
+
+      - name: Tell ntfy it failed
+        if: failure()
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
+        run: scripts/ntfy-failed.sh release

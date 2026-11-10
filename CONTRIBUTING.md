@@ -8,6 +8,11 @@ just ci          # this repo's CI lanes (lane.1.sh lists them), through swim ci
 just next-tag    # tag HEAD with the next release (DRY=1 prints it); see CHANGELOG.md's release steps
 ```
 
+- **CI:** GitHub (`.github/workflows`, Linux and macOS) and Forgejo
+  (`.forgejo/workflows`, Linux, a `docker` runner) both run `swim ci` on
+  every push to main and every pull request. Forgejo's tells ntfy when a
+  run or a release fails: set the repo's `NTFY_URL` secret (the topic's
+  URL) and, for a private topic, `NTFY_TOKEN`.
 - **End-to-end:** `internal/e2e` drives the built binary one command at a
   time; its `TestScenario*` tests run whole lane DAGs offline
   ([e2e/README.md](e2e/README.md)).
