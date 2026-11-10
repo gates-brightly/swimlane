@@ -305,15 +305,18 @@ var Commands = map[string]string{
   it starts now (FLAG=1 in this environment), and says whether swim run
   would ask or dry-run. Only what the header sets is shown (Fail: hard, a
   target, an owner other than you too). A lane another session is writing
-  shows its claim (swim new took it); your own doesn't.
-  --yaml     the status file's fields as YAML, tagged schema: swim.status/v1;
+  shows its claim (swim new took it); your own doesn't. Under the queue
+  line, the watcher that runs it and its platform (as swim queue).
+  --yaml    the status file's fields as YAML, tagged schema: swim.status/v1;
              each ready lane adds pending_header {after, guards: [{flag,
              description, approved, how, asks}], timeout,
              locks, includes, fail, targets, owner} and deps: [{lane, job (its round id),
              state, note}] (deps_error if its After: doesn't resolve);
              claims: the lanes' live claims (swim new takes one), by lane
-             (with N|ROUND-ID, just that lane); the file itself is unchanged
-             (cat .swim/status.yml)
+             (with N|ROUND-ID, just that lane); watchers: the swim watch
+             processes up, or the last one seen (up: false), each with
+             host, pid, version and platform {os, arch, bash}; the file
+             itself is unchanged (cat .swim/status.yml)
   --rebuild  reconstruct status.yml from lane scripts and logs
   --run RUN  each lane as it was in swim run RUN (from the logs, archives
              included, and .swim.log for lanes skipped before they started)
@@ -525,7 +528,10 @@ swim queue show|rm|requeue ID
             warns. The entry records the swim that queued it (swim).
   list      waiting, running and orphaned entries, and the last 5 consumed
             (--all: every one); --yaml for scripts (schema swim.queue-list/v1).
-            A batch a watcher leaves queued says why ("left queued: ...")
+            A batch a watcher leaves queued says why ("left queued: ...").
+            Its last line names the watchers up and what their lanes run
+            on ("watcher: zach-mbp, darwin/arm64, bash 3.2"), or with none
+            up the last one seen (.swim/watcher.yml); --yaml: watchers:
   show ID   the entry file; ID is its id, a 4+ character prefix, or #seq
   rm ID     remove an entry that isn't running
   requeue ID  put an orphaned (its watcher died) or consumed entry back at the

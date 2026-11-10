@@ -5,9 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/version"
@@ -98,6 +100,45 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 		t.Fatalf("queue add with no worker: exit %d\n%s", code, msg)
 	}
 	contains(t, "no worker", msg, "no swim watch is running yet: it waits for one")
+}
+
+// The watcher says what platform its lanes run on (OS, architecture, its
+// bash): a watcher on another host shows in swim queue and swim status,
+// and their --yaml; with none up, the last one seen does, marked so. A
+// real swim watch records its own.
+func TestWatcherPlatform(t *testing.T) {
+	r := newRepo(t)
+	r.script(1, "one", `step "a" true`)
+	far := func(beat time.Time) string {
+		ts := beat.UTC().Format(time.RFC3339)
+		return "host: far-away\npid: 4242\nuser: zach\nclaimed: \"" + ts + "\"\nheartbeat: \"" + ts +
+			"\"\nlease: 2m\nversion: 0.20261110.1\nsyntax: 4\n" +
+			"platform:\n  os: darwin\n  arch: arm64\n  bash: 3.2.57(1)-release\n"
+	}
+	presence := filepath.Join(r.root, ".swim", "workers", "far-away-4242.yml")
+	os.MkdirAll(filepath.Dir(presence), 0o755)
+	if err := os.WriteFile(presence, []byte(far(time.Now())), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.mustSwim("queue", "add", "1")
+	const line = "watcher: far-away, darwin/arm64, bash 3.2"
+	contains(t, "queue", r.mustSwim("queue"), line)
+	contains(t, "status", r.mustSwim("status"), "queue: 1 queued", line)
+	for _, args := range [][]string{{"queue", "--yaml"}, {"status", "--yaml"}} {
+		contains(t, strings.Join(args, " "), r.mustSwim(args...), "host: far-away", "os: darwin", "arch: arm64", "bash: 3.2.57(1)-release", "up: true")
+	}
+
+	// None up: the last one seen, marked as such.
+	os.Remove(presence)
+	os.WriteFile(filepath.Join(r.root, ".swim", "watcher.yml"), []byte(far(time.Now().Add(-3*time.Hour))), 0o644)
+	contains(t, "queue, none up", r.mustSwim("queue"), "watcher: none up; last seen far-away, darwin/arm64, bash 3.2, 3h ago")
+	contains(t, "status --yaml, none up", r.mustSwim("status", "--yaml"), "host: far-away", "up: false")
+
+	// A real watcher records this machine's platform, and is the last seen
+	// once it stops.
+	r.mustSwim("watch", "--once", "--plain")
+	contains(t, "after swim watch", r.mustSwim("queue", "--yaml"),
+		"host: "+hostname(), "os: "+runtime.GOOS, "arch: "+runtime.GOARCH, "bash: ", "up: false")
 }
 
 func mustRun(t *testing.T, r *repo, swim string, args ...string) string {

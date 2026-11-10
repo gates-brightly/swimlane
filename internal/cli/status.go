@@ -88,7 +88,11 @@ func cmdStatus(args []string) error {
 			// Claims are the lanes' live claims (swim new takes one), by
 			// lane: not in status.yml itself.
 			Claims map[int]*lane.Claim `yaml:"claims,omitempty"`
-		}{Schema: "swim.status/v1", UpdatedAt: f.UpdatedAt, Root: f.Root, Branch: f.Branch, LastRun: f.LastRun}
+			// Watchers are the swim watch processes up now, or the last
+			// one seen (up: false), with what their lanes run on.
+			Watchers []watcherDoc `yaml:"watchers,omitempty"`
+		}{Schema: "swim.status/v1", UpdatedAt: f.UpdatedAt, Root: f.Root, Branch: f.Branch, LastRun: f.LastRun,
+			Watchers: watchers(root)}
 		lanes := f.Lanes
 		if len(only) > 0 {
 			lanes = nil
@@ -332,6 +336,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 			line += fmt.Sprintf(", %d orphaned", orphaned)
 		}
 		fmt.Println(p.Paint(ui.Yellow, line+"   (swim queue; the watcher: swim watch)"))
+		if w := watcherLine(root); w != "" {
+			fmt.Println(p.Paint(ui.Dim, "  "+w))
+		}
 	}
 	fmt.Println(p.Paint(ui.Dim, "raw: "+rel(root, status.Path(root))+"   logs: swim log N"))
 }

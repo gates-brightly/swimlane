@@ -12,9 +12,11 @@ says otherwise:
 
 - **You:** a sandbox that sees only the repo. No cloud credentials, VPN,
   SSH keys or the operator's home: don't probe for them.
-- **The operator:** their own machine, often macOS (bash 3.2, BSD tools),
-  with their access. Lanes run there; a command that works in your sandbox
-  hasn't run on theirs.
+- **The operator:** their own machine, with their access. Lanes run
+  there; a command that works in your sandbox hasn't run on theirs. `swim
+  queue` names it, from the watcher that runs the batches (`watcher:
+  zach-mbp, darwin/arm64, bash 3.2`; with none up, the last one seen):
+  write for that OS, its tools (BSD on darwin) and that bash.
 - **Only the repo is shared.** `swim status`, `queue` and `log`
   show the operator's runs; `swim env`, `doctor` and `config` describe your
   machine, not theirs.

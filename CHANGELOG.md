@@ -45,6 +45,7 @@ history stays here, since `swim changelog --since` reads it.
 - `swim archive` refuses a committed lane instead of stubbing it; no swim writes stubs any more.
 - `swim log N --failed`: just the failed steps of the round, output in full; bare `swim` points at it.
 - `run`, step's old name, is gone: a lane that still calls it fails ("run: command not found").
+- `swim queue` and `swim status` say what the watcher's lanes run on: `watcher: zach-mbp, darwin/arm64, bash 3.2`.
 
 ### Changed
 
@@ -84,6 +85,15 @@ history stays here, since `swim changelog --since` reads it.
   `no failed steps` and exits 0. `--failed --yaml` keeps only the failed
   results, each with `before:` (swim.log/v1 gains the field). Bare `swim`
   points a failed lane at it (`→ swim log 2 --failed`).
+- **The watcher says what platform lanes run on:** each `swim watch`
+  records its OS, architecture and the bash its lanes get (asked once,
+  as it starts) with its heartbeat. `swim queue` ends with `watcher:
+  zach-mbp, darwin/arm64, bash 3.2`, `swim status` shows it under its
+  queue line, and both `--yaml` carry `watchers:` (host, pid, version,
+  `platform: {os, arch, bash}`, `up`). With none up they show the last
+  one seen (`.swim/watcher.yml`), marked `up: false` and "none up; last
+  seen ...". An agent in a Linux sandbox can see its lanes will run on
+  darwin with bash 3.2 instead of assuming its own machine.
 - **Why a guard is there:** a `#   why: <reason>` line right under a
   `# Guards: FLAG  <what it does>` line says why the change is made. The
   approval prompt, `swim watch`, its notifications (and the phone's) and

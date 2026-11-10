@@ -42,5 +42,10 @@ swim wait [--timeout D]                 # until nothing runs or is queued
   running batch renews a heartbeat (`queue_lease`, 2m), so from another host
   a dead watcher's batch shows as orphaned (see
   [recovery](recovery.md#an-orphaned-queue-entry)).
+- **Says what its lanes run on:** each watcher records its host, OS and
+  architecture, and the bash its lanes get. `swim queue` ends with it
+  (`watcher: zach-mbp, darwin/arm64, bash 3.2`), as does `swim status`
+  under its queue line, and both `--yaml` (`watchers:`). With none up,
+  they show the last one seen (`.swim/watcher.yml`), marked as such.
 - Ctrl-C stops the batches in hand gracefully. Each ended batch goes to
   `.swim/queue/done/` with its result.

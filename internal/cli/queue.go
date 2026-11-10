@@ -763,9 +763,18 @@ func queueList(args []string) error {
 			}
 			rows = append(rows, row{e, state})
 		}
-		return yaml.NewEncoder(os.Stdout).Encode(map[string]any{"schema": "swim.queue-list/v1", "entries": rows})
+		doc := map[string]any{"schema": "swim.queue-list/v1", "entries": rows}
+		if ws := watchers(root); len(ws) > 0 {
+			doc["watchers"] = ws
+		}
+		return yaml.NewEncoder(os.Stdout).Encode(doc)
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	// Where the batches run, last: what an agent queuing from another
+	// machine writes its lanes for.
+	if line := watcherLine(root); line != "" {
+		defer fmt.Println(p.Paint(ui.Dim, line))
+	}
 	if len(entries) == 0 {
 		fmt.Println("queue is empty. Queue a batch: swim queue N|ROUND-ID ... [--approve FLAG]")
 		return nil

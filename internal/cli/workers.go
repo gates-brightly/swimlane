@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
@@ -89,6 +91,61 @@ func checkWorkers(root string, e *queue.Entry, live []*queue.Presence) (refuse e
 	}
 	return fmt.Errorf("no watcher running now can run this batch:\n%s\nthis swim is %s (syntax %d). Update the watcher's swim (%s, or the build that matches this one) and restart its swim watch, or run swim watch with this build",
 		strings.Join(whys, "\n"), version.String(), syntax.Reads, version.InstallCmd), ""
+}
+
+// watcherDoc is a watcher in swim queue --yaml and swim status --yaml:
+// where it runs and what its lanes run on. Up is false for the last one
+// seen, shown when none is up.
+type watcherDoc struct {
+	Host      string         `yaml:"host"`
+	PID       int            `yaml:"pid"`
+	Version   string         `yaml:"version,omitempty"`
+	Platform  queue.Platform `yaml:"platform,omitempty"`
+	Heartbeat string         `yaml:"heartbeat,omitempty"`
+	Up        bool           `yaml:"up"`
+}
+
+// watchers are the watchers up now, or with none up the last one seen
+// (Up false); none at all if no watcher ever ran here.
+func watchers(root string) []watcherDoc {
+	var out []watcherDoc
+	for _, p := range queue.LiveWorkers(root) {
+		out = append(out, watcherDoc{p.Host, p.PID, p.Version, p.Platform, p.Heartbeat, true})
+	}
+	if len(out) == 0 {
+		if p := queue.LastWatcher(root); p != nil {
+			out = append(out, watcherDoc{p.Host, p.PID, p.Version, p.Platform, p.Heartbeat, false})
+		}
+	}
+	return out
+}
+
+// watcherLine says, for swim queue and swim status, where queued lanes
+// will run: "watcher: zach-mbp, darwin/arm64, bash 3.2", or the last one
+// seen when none is up. "" if no watcher ever ran here.
+func watcherLine(root string) string {
+	ws := watchers(root)
+	var parts []string
+	for _, w := range ws {
+		s := w.Host
+		if pl := w.Platform.String(); pl != "" {
+			s += ", " + pl
+		} else {
+			s += " (an older swim: its platform isn't recorded)"
+		}
+		if !w.Up {
+			ago := ""
+			if t, err := time.Parse(time.RFC3339, w.Heartbeat); err == nil {
+				ago = ", " + display.Ago(time.Since(t))
+			}
+			return "watcher: none up; last seen " + s + ago + " (swim watch)"
+		}
+		parts = append(parts, s)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "watcher: " + strings.Join(parts, "; ")
 }
 
 // heldReasons maps each batch a live worker leaves queued to why.
