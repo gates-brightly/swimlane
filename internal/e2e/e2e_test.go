@@ -1666,7 +1666,9 @@ step --timeout 0 "unlimited" sleep `+fmt.Sprint(scaled(1500*time.Millisecond).Se
 func TestRetryRespectsRoundDeadline(t *testing.T) {
 	r := newSerialRepo(t) // it times a round's Timeout: alone, not beside the parallel tests
 	limit := dur(2 * time.Second)
-	r.script(1, "deadline", `step --retry 5 --backoff `+dur(1500*time.Millisecond)+` "keeps failing" false
+	// The backoff, less its jitter (20%), is past the Timeout: no retry
+	// fits, however fast the round got to its first attempt.
+	r.script(1, "deadline", `step --retry 5 --backoff `+dur(3*time.Second)+` "keeps failing" false
 step "after" true`)
 	p := filepath.Join(r.root, "lane.1.sh")
 	data, _ := os.ReadFile(p)
