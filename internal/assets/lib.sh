@@ -374,6 +374,14 @@ step() {
   _swim_run_step "" "$@"
 }
 
+# run — step's old name. It stops the round rather than run the step, so a
+# lane that still calls it fails there instead of losing the step's result
+# (a missing command would only log a WARN). swim lint refuses the call
+# (run-is-step) and swim lint --fix renames it.
+run() {
+  _swim_stop "run was renamed step: write step \"<label>\" cmd (swim lint --fix does)"
+}
+
 # gate [options] "<label>" cmd [args...] — like step, but a failure (after
 # the last attempt) stops the round here, before any later (destructive)
 # step. Fail-closed.

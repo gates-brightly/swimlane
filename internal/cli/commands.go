@@ -466,6 +466,14 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 }
 
 func cmdRun(args []string) error {
+	if n := os.Getenv("SWIM_LANE"); n != "" && slices.Contains(args, "--") {
+		// swim run "<label>" -- cmd, inside a lane: swim step's old name.
+		// It ends the round rather than run the step (or start lanes).
+		if root, _, ln, err := laneCtx(n); err == nil {
+			return endRound(root, ln, 1, `swim run was renamed swim step: write swim step "<label>" -- cmd`)
+		}
+		return usagef(`swim run was renamed swim step: write swim step "<label>" -- cmd`)
+	}
 	var rf runFlags
 	rest, err := rf.parse(args)
 	if err != nil {

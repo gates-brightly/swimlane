@@ -734,8 +734,9 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   --fix adds the header lines a script's body needs, for you to review:
   # Guards: for each guard it uses without declaring (with the guard's own
   action as the description), # Guards: * for a flag it names at run time,
-  # Includes: for a repo file it sources or imports. It never removes a
-  line or rewrites one otherwise, and skips running lanes and lanes of
+  # Includes: for a repo file it sources or imports. In a bash lane it
+  also renames run, step's old name, to step. It never removes a line or
+  rewrites one otherwise, and skips running lanes and lanes of
   jobs. It also rewrites a # Job: line, Round-ID's old name, to
   # Round-ID:.
 
@@ -758,6 +759,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                            (refused when it asks; a warning with # Guards: *)
     guard-dynamic (error)  guard "$FLAG" without # Guards: *
     guard-unused (warn)    a # Guards: flag no guard uses
+    run-is-step (error)    a call of run, step's old name: it no longer runs
+                           a step but stops the round (--fix renames it)
     job-is-round-id (warn) a # Job: line, Round-ID's old name (--fix renames
                            it)
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block

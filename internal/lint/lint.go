@@ -56,7 +56,7 @@ var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true, "gnu-only": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
 	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
-	"step": true, "step-pipe": true, "tree-write": true, "step-subshell": true, "guard-text": true, "modules": true,
+	"step": true, "step-pipe": true, "tree-write": true, "step-subshell": true, "guard-text": true, "run-is-step": true, "modules": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -113,6 +113,7 @@ var Checks = []Check{
 	{"guard-dynamic", finding.Error, false, "a guard whose flag is named at run time, without `# Guards: *`", checkGuardDynamic},
 	{"guard-unused", finding.Warn, false, "a flag listed in `# Guards:` but never used", checkGuardUnused},
 	{"step", finding.Error, false, "a step, gate or snapshot written so it can't run as it reads: an unknown option, no label or command, a command for a label, a command quoted into one word, or cd/export in a step", checkStepCall},
+	{"run-is-step", finding.Error, false, "a call of run, step's old name, which no longer runs a step: it stops the round (swim lint --fix rewrites it)", checkRunIsStep},
 	{"job-is-round-id", finding.Warn, false, "a # Job: line, Round-ID's old name (swim lint --fix rewrites it)", checkJobIsRoundID},
 	{"step-subshell", finding.Error, false, "a step, gate or snapshot inside $(...), backticks or after a pipe, where its result never reaches the lane", checkStepSubshell},
 	{"step-pipe", finding.Error, false, "a pipe or redirect after a step, which applies to swim's output, not the step's command", checkStepPipe},

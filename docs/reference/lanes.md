@@ -45,7 +45,7 @@ step "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 |---|---|
 | `lane_init N` | Explicit form only, first: cd to the lane's workspace (its pinned copy under `swim run`), open the round, export `SWIM_ROUND_ID`, `SWIM_DEADLINE`, `SWIM_TIMEOUT`. Refuses a lane already running. |
 | `stage NAME` | Start a [stage](#stages). Steps before the first are setup. |
-| `step [opts] "<label>" cmd [args]` | A step: PASS/FAIL. A failure doesn't stop the round. |
+| `step [opts] "<label>" cmd [args]` | A step: PASS/FAIL. A failure doesn't stop the round. (`run`, its old name, stops the round instead; lint refuses it, and `swim lint --fix` renames it.) |
 | `gate [opts] "<label>" cmd [args]` | A step whose failure (after the last attempt) stops the round. |
 | `snapshot [opts] "<label>" cmd [args]` | A read-only step whose output is also saved under `.swim/snapshots/`. |
 | `guard FLAG` | True if FLAG is approved for this run, else logs SKIP (a dry run). What it does and why come from its `# Guards:` lines. See [guards](guards.md). |

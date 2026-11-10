@@ -77,6 +77,7 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{short, `echo x | gate "piped gate" false`, "step-subshell"},
 		{short, "printf 'a\\nb\\n' | while read t; do\n  gate \"check $t\" false\ndone", "step-subshell"},
 		{short, "echo \"$(step \"quoted\" true)\"", "step-subshell"},
+		{short, `run "old name" true`, "run-is-step"},
 		{short, `step "count" ls | wc -l`, "step-pipe"},
 		{short, `step "file" echo hi > out.txt`, "step-pipe"},
 		{"#!/bin/bash", `step "x" true`, "short-form"},

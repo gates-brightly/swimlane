@@ -45,7 +45,7 @@ history stays here, since `swim changelog --since` reads it.
 - `swim archive` refuses a committed lane instead of stubbing it; no swim writes stubs any more.
 - `swim log N --failed`: just the failed steps of the round, output in full; bare `swim` points at it.
 - A waiting batch says what it waits for, on the watch screen and in `swim queue`: `waits: lane 2 is running (pid 4121)`.
-- `run`, step's old name, is gone: a lane that still calls it fails ("run: command not found").
+- `run`, step's old name, no longer runs a step: it stops the round ("run was renamed step"), lint refuses it, and `swim lint --fix` renames it.
 - `swim queue` and `swim status` say what the watcher's lanes run on: `watcher: zach-mbp, darwin/arm64, bash 3.2`.
 - After a fix, `swim queue requeue ID --failed` (or `r` on the batch in `swim watch`) runs only what didn't pass.
 
@@ -143,18 +143,20 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Removed
 
-- **The `run` alias for `step`:** the library's `run`, the in-lane
-  `swim run "<label>" -- cmd`, lint's `run-is-step` and `swim lint
-  --fix`'s rename. They were kept for one release after the rename, and
-  0.20261110.1 shipped it.
+- **The `run` alias for `step`:** the library's `run` and the in-lane
+  `swim run "<label>" -- cmd` no longer run a step. They were kept for
+  one release after the rename, and 0.20261110.1 shipped it. Each now
+  stops the round where it's called ("run was renamed step"), so a lane
+  that still calls one fails rather than drop the step's result.
+  `run-is-step` is now a lint error (`swim run` refuses the lane), and
+  `swim lint --fix` still renames the calls.
 
 ### Upgrading
 
-- **A lane that still calls `run` fails** where it calls it: `run:
-  command not found`, which the round logs. With an older swim
-  (0.20261110.1 or before), `swim lint --fix` renames the calls to
-  `step`; with this one, rename them yourself (`step "<label>" cmd`, and
-  `swim step "<label>" -- cmd` in a wrapped lane).
+- **A lane that still calls `run` is refused** (`run-is-step`), and
+  run some other way it stops there. `swim lint --fix` renames the calls
+  to `step`; in a wrapped lane, rename `swim run "<label>" -- cmd` to
+  `swim step "<label>" -- cmd` yourself.
 
 ## 0.20261110.1 (v0.20261110.1, 2026-11-10)
 
