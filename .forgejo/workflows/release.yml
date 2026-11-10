@@ -1,0 +1,78 @@
+name: release
+
+# The Forgejo side of a release: a release tag (v0.<YYYYMMDD>.<index>)
+# reaching fj, pushed by `just next-tag` after origin (or later by `just
+# mirror-tags`), builds swim from the same .goreleaser.yaml as GitHub's
+# release workflow and publishes the same assets as the tag's Forgejo
+# release. GoReleaser takes the repo from the checkout's origin (this
+# Forgejo's zach/swimlane) and the API from gitea_urls.
+#
+# Install from it:
+#   curl -fsSL https://forgejo.stern-tone.ts.net/zach/swimlane/releases/download/<tag>/install.sh |
+#     SWIM_DOWNLOAD_BASE=https://forgejo.stern-tone.ts.net/zach/swimlane/releases sh
+#
+# Needs a runner with the docker label and internet access (the actions
+# and Go come from github.com and go.dev). The token is RELEASE_TOKEN when
+# that secret is set (a Forgejo access token with write:repository, for
+# when the automatic token can't publish releases), else the automatic one.
+#
+# Forgejo runs only .forgejo/workflows when the directory exists, so
+# .github/workflows (GitHub's test and release) doesn't run here.
+
+on:
+  push:
+    tags: ["v0.*"]
+
+jobs:
+  release:
+    runs-on: docker
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Older tags (v0.7.20261013) match v0.* too: only this scheme releases.
+      - name: Release tag?
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v0\.[0-9]{8}\.[1-9][0-9]*$ ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$GITHUB_REF_NAME isn't a release tag (v0.<YYYYMMDD>.<index>): nothing to build"
+          fi
+
+      # Full URLs: Forgejo resolves a bare actions/... against its own
+      # mirror, which doesn't carry goreleaser-action.
+      - uses: https://github.com/actions/checkout@v4
+        if: steps.tag.outputs.ok == 'true'
+        with:
+          fetch-depth: 0 # the tags, and the last commits for swim changelog
+
+      - uses: https://github.com/actions/setup-go@v5
+        if: steps.tag.outputs.ok == 'true'
+        with:
+          go-version-file: go.mod
+
+      # The unit tests, as a last check on what's shipped, as on GitHub.
+      - name: Unit tests
+        if: steps.tag.outputs.ok == 'true'
+        run: go test $(go list ./... | grep -v /internal/e2e)
+
+      # The notes go outside the checkout: GoReleaser refuses a dirty tree.
+      - name: Notes and stamps
+        if: steps.tag.outputs.ok == 'true'
+        run: |
+          scripts/release-notes.sh "$GITHUB_REF_NAME" > /tmp/swim-release-notes.md
+          # swim changelog's commits, as the justfile stamps them.
+          echo "SWIM_RECENT=$(git log -5 --no-merges --name-only --format='%x1e%h%x1f%as%x1f%s%x1f%b%x1f' | base64 -w0)" >> "$GITHUB_ENV"
+
+      - uses: https://github.com/goreleaser/goreleaser-action@v6
+        if: steps.tag.outputs.ok == 'true'
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --release-notes /tmp/swim-release-notes.md
+        env:
+          GITEA_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITHUB_TOKEN }}
+          # Publish with the Gitea client even if the runner also sets
+          # GITHUB_TOKEN.
+          GORELEASER_FORCE_TOKEN: gitea

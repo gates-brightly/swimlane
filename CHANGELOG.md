@@ -29,8 +29,10 @@ clean tree already on origin's main, it renames `## Unreleased` to
 origin, then mirrors it to fj; `just mirror-tags` catches fj up on any it
 missed. The push to origin builds the release binaries and publishes the
 GitHub release, with this section as its notes
-(`.github/workflows/release.yml`; `just snapshot` builds the same locally
-into dist/).
+(`.github/workflows/release.yml`); the tag reaching fj does the same for
+the Forgejo release (`.forgejo/workflows/release.yml`), from the same
+`.goreleaser.yaml`. `just snapshot` builds the binaries locally into
+dist/.
 
 From the next release, each opens with **What changed for you**: at most
 ten lines, one per change you'd notice, before the full sections. The full
@@ -116,6 +118,11 @@ history stays here, since `swim changelog --since` reads it.
   queued)"), so a fixed lane's guard is asked again or dry-runs. On
   `swim watch`'s screen, a batch that ended without passing stays
   listed, and `r` on it does the same.
+- **Releases on Forgejo too:** a release tag reaching fj builds and
+  publishes the same assets as the GitHub release, from the same
+  `.goreleaser.yaml` (`.forgejo/workflows/release.yml`, on a runner with
+  the `docker` label). Install from it with
+  `SWIM_DOWNLOAD_BASE=https://forgejo.stern-tone.ts.net/zach/swimlane/releases sh install.sh`.
 - **Why a guard is there:** a `#   why: <reason>` line right under a
   `# Guards: FLAG  <what it does>` line says why the change is made. The
   approval prompt, `swim watch`, its notifications (and the phone's) and

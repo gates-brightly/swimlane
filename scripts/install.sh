@@ -9,7 +9,9 @@
 #   SWIM_INSTALL_DIR  where swim goes; default: /usr/local/bin if writable,
 #                     else ~/.local/bin
 #   SWIM_DOWNLOAD_BASE  where the releases are, laid out as GitHub's
-#                     (<base>/download/<tag>/<asset>); default GitHub's
+#                     (<base>/download/<tag>/<asset>); default GitHub's.
+#                     Forgejo lays them out the same: the mirror is
+#                     https://forgejo.stern-tone.ts.net/zach/swimlane/releases
 #
 # It downloads swim_<os>_<arch>.tar.gz for this machine (linux or darwin,
 # amd64 or arm64), checks it against the release's checksums.txt, and

@@ -25,6 +25,10 @@ the newest. The installer picks this machine's, checks it, and puts it in
 `/usr/local/bin` (if writable) or `~/.local/bin`. In a container, install
 at build time.
 
+Each release is published on the Forgejo mirror too, with the same assets.
+To install from there, point the installer at it:
+`SWIM_DOWNLOAD_BASE=https://forgejo.stern-tone.ts.net/zach/swimlane/releases sh install.sh`.
+
 Building from source needs Go **1.27.1** or newer (`go.mod`'s `go` line);
 an older `go` fetches it when `GOTOOLCHAIN` allows.
 

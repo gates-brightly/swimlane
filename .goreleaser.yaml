@@ -1,11 +1,17 @@
-# GoReleaser: swim's release binaries, built by .github/workflows/release.yml
-# when a release tag (v0.<YYYYMMDD>.<index>) reaches origin. `just snapshot`
-# builds the same into dist/ without publishing.
+# GoReleaser: swim's release binaries, published in two places from this one
+# config when a release tag (v0.<YYYYMMDD>.<index>) arrives:
+#   - GitHub (origin): .github/workflows/release.yml, with GITHUB_TOKEN;
+#   - Forgejo (fj): .forgejo/workflows/release.yml, with GITEA_TOKEN and
+#     GORELEASER_FORCE_TOKEN=gitea (gitea_urls below).
+# GoReleaser picks the release target by the token it's given; the builds
+# and assets are the same. `just snapshot` builds them into dist/ without
+# publishing.
 #
 # The asset names carry no version, so a container can always fetch the
 # newest with a fixed URL, or pin one by its tag:
 #   https://github.com/gates-brightly/swimlane/releases/latest/download/swim_linux_amd64.tar.gz
 #   https://github.com/gates-brightly/swimlane/releases/download/v0.20261102.1/swim_linux_amd64.tar.gz
+#   https://forgejo.stern-tone.ts.net/zach/swimlane/releases/download/v0.20261102.1/swim_linux_amd64.tar.gz
 # install.sh (a release asset too) does that and checks checksums.txt.
 version: 2
 
@@ -45,6 +51,9 @@ checksum:
   name_template: checksums.txt
 
 release:
+  # GoReleaser allows one release target here. On Forgejo (GITEA_TOKEN) it
+  # takes the repo from the checkout's origin remote, Forgejo's own
+  # zach/swimlane, at the gitea_urls below.
   github:
     owner: gates-brightly
     name: swimlane
@@ -56,6 +65,11 @@ release:
 
 changelog:
   disable: true
+
+# The Forgejo mirror (fj), used only with GITEA_TOKEN.
+gitea_urls:
+  api: https://forgejo.stern-tone.ts.net/api/v1
+  download: https://forgejo.stern-tone.ts.net
 
 snapshot:
   version_template: "0.{{ .Now.UTC.Format \"20060102\" }}-snapshot-{{ .ShortCommit }}"
