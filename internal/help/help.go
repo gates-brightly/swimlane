@@ -140,7 +140,9 @@ var Commands = map[string]string{
   Write lane.N.sh from the template: the goal on its Round: line, a new
   round id on its Round-ID: line, the toolchain preamble from config, and
   example snapshot/gate/guard/verify steps to replace. Prints the round id.
-  Marks the lane ready in status.yml, with its round and round id.
+  Marks the lane ready in status.yml, with its round and round id. A new
+  lane N above a free one gets a note naming the free lane: take the
+  lowest, so lane files don't pile up.
   Refuses if lane N is running, or already holds a ready round (use
   --force to replace a ready round you own).
   It takes a claim on the lane while you write the round (claim_lease,
@@ -364,10 +366,10 @@ swim archive --passed ["<note>"]
 
   Tidy lanes whose rounds have ended: rename each lane's
   .swim/logs/laneN.log to laneN.prev-<NAME>.log in the same directory,
-  and replace its lane.N.sh with a "nothing ready" stub carrying <note>
-  (default: where the log went). The slot is empty: status shows the lane
-  empty with its note, swim run skips it, and swim new N writes the next
-  round. swim archive 1 2 3 "shipped" tidies lanes 1, 2 and 3. Every
+  and remove its lane.N.sh (one git tracks, a committed CI lane, becomes a
+  "nothing ready" stub instead). The slot is empty: status shows the lane
+  empty with <note> (default: where the log went), swim run skips it, and
+  swim new takes it for the next round. swim archive 1 2 3 "shipped" tidies lanes 1, 2 and 3. Every
   argument is a lane number or a round id (the lane whose script holds that
   round or that last ran it); the words after them are the note. NAME is
   slugified; without --as each archive is named after its round id.
@@ -572,7 +574,7 @@ swim queue show|rm|requeue ID
                    of its guards); the watcher takes it when its lanes are free
     a on a lane    archives it as swim archive N does: the lane goes
                    empty, the log is kept as laneN.prev-<round-id>.log and the
-                   script becomes a stub (not while it runs, nor without a
+                   script is removed (not while it runs, nor without a
                    log)
     r on a batch   starts a waiting batch now, out of turn, if its lanes are
                    free, with its own approvals, exactly as in turn
@@ -808,6 +810,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                               (hub.yml, headless.*, groups/, observations/,
                               out/, checkpoints/, earmarks/, lane1.2.claim,
                               ...)
+    stub (warn)               a lane.N.sh stub an older swim archive left
+                              (untracked, not running)
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
                               older than 14 days, of no lane's latest round
     remote-running (warn)     a lane has run on another machine sharing the

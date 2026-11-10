@@ -115,6 +115,7 @@ var Checks = []Check{
 	{"claim-expired", true, "a lane claim (.swim/claims/) past its lease", checkExpiredClaims},
 	{"watch-gone", true, "a swim watch presence file (.swim/workers/) whose process is gone, or whose heartbeat stopped", checkWatchGone},
 	{"leftover", true, "a file under .swim/ that swim no longer reads (hub.yml, headless.*, groups/, observations/, out/, checkpoints/, earmarks/, ...)", checkLeftover},
+	{"stub", true, "a lane.N.sh stub an older swim archive left (untracked, not running)", checkStubs},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than 14 days, of no lane's latest round", checkOldStages},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 }
@@ -141,9 +142,9 @@ func Fixable(code string) bool {
 
 // Fix applies the safe repairs for fs (the .gitignore block, stale pid
 // files, expired claims, dead watches' presence files, old pinned copies,
-// and files under .swim/ swim no longer reads) and returns what it did.
-// It checks each again before removing it, and never touches config, lane
-// scripts, git, lane logs, the chain, status.yml, the queue, .swim/scripts
+// files under .swim/ swim no longer reads, and untracked archive stubs) and
+// returns what it did. It checks each again before removing it, and never
+// touches config, lane scripts other than stubs, git, lane logs, the chain, status.yml, the queue, .swim/scripts
 // or snapshots.
 func Fix(o Options, fs []finding.Finding) ([]string, error) {
 	o.defaults()
@@ -172,7 +173,7 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 				return done, err
 			}
 			done = append(done, "removed "+f.File)
-		case "claim-expired", "watch-gone", "leftover":
+		case "claim-expired", "watch-gone", "leftover", "stub":
 			ok, err := o.removeLeftover(f)
 			if err != nil {
 				return done, err

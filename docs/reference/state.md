@@ -35,7 +35,7 @@ stateDiagram-v2
 
 | State | Entered when | Leaves when |
 |---|---|---|
-| `empty` | `swim init`, `swim archive` (the stub carries its note), or a script with no `# Round:` line | A round is written. |
+| `empty` | `swim init`, `swim archive` (status keeps its note), or a script with no `# Round:` line | A round is written. |
 | `ready` | `swim new`, or `swim status` reading a round on disk | The lane is run, queued or archived. |
 | `queued` | `swim queue` (bare swim and swim watch show it from the queue) | A watcher takes the batch. |
 | `waiting` | The launcher, before the lane starts: `waiting_on` names the lanes in its `After:`, `reason` the lock or slot. A running round asking the operator shows `waiting for approval: ...` while the file says `running`. | Its dependencies end, it takes its lock or a slot, or the run is interrupted. |

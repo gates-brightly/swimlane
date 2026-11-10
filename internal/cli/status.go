@@ -250,7 +250,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		} else if l.Pending == "" && state != status.Running {
 			if info, _ := lane.ReadScript(root, l.Lane); info.Stub {
 				detail("note: "+info.Message, ui.Dim)
-			} else if !info.Exists {
+			} else if !info.Exists && l.LastNote != "" {
+				detail("note: "+l.LastNote, ui.Dim)
+			} else if !info.Exists && l.LastArchive == "" {
 				detail("no lane script", ui.Dim)
 			}
 		}
@@ -308,6 +310,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 			detail("last archive: "+l.LastArchive, ui.Dim)
 		}
 	}
+	if line := passedLine(root, f, cfg); line != "" && len(only) == 0 {
+		fmt.Println(p.Paint(ui.Dim, line))
+	}
 	if entries, err := queue.List(root, false); err == nil && len(entries) > 0 {
 		queued, running, orphaned := 0, 0, 0
 		for _, e := range entries {
@@ -341,9 +346,9 @@ func rebuildStatus(root string, cfg *config.Config) error {
 			if err != nil {
 				return err
 			}
-			archive := l.LastArchive
+			archive, note := l.LastArchive, l.LastNote
 			l.ResetRun()
-			l.LastArchive = archive
+			l.LastArchive, l.LastNote = archive, note
 			if !r.Found {
 				l.State, l.Round, l.Job = status.Empty, "", ""
 				l.Rest()

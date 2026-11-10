@@ -164,6 +164,26 @@ func cmdAttention() error {
 	if len(needs)+len(running)+len(ready) == 0 {
 		fmt.Println("nothing needs you, and nothing is running.")
 	}
+	if line := passedLine(root, f, cfg); line != "" {
+		fmt.Println(p.Paint(ui.Dim, line))
+	}
 	fmt.Println(p.Paint(ui.Dim, "every lane: swim status · what happened: swim log --since 1h · commands: swim --help"))
 	return nil
+}
+
+// passedLine names the lanes whose round passed and nobody has archived
+// yet, or is "" when there are
+// none: their scripts and logs stay in the repo until then. A lane whose
+// script git tracks (a committed CI lane) passes every run: it's left out.
+func passedLine(root string, f *status.File, cfg *config.Config) string {
+	var ns []string
+	for _, l := range f.Lanes {
+		if l.State == status.Passed && cfg.IsActive(l.Lane) && !lane.Tracked(root, lane.Script(root, l.Lane)) {
+			ns = append(ns, strconv.Itoa(l.Lane))
+		}
+	}
+	if len(ns) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s passed, not archived (lane %s)  → swim archive %s", plural(len(ns), "lane"), strings.Join(ns, ","), strings.Join(ns, " "))
 }

@@ -51,6 +51,6 @@ Every view (bare swim, swim status, swim watch, a run's panel and summary, --yam
 | **failed** | Its round failed (`failed exit 1`). |
 | **skipped** | Its round was skipped (a lane it runs after didn't pass) or dry-ran a guard. |
 | **interrupted** | Its round was stopped (Ctrl-C, `swim interrupt`), or its process is gone. |
-| **empty** | No round in the slot: no script, a stub, or no `# Round:` line. |
+| **empty** | No round in the slot: no script (swim archive removes it), a stub, or no `# Round:` line. |
 
 The uppercase words in a lane log (`PASS`, `FAIL`, `SKIP`, `STOP`, `BLOCKED`, `== END PASS`) mark steps and rounds there; they are not lane states.

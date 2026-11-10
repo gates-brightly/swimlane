@@ -665,12 +665,15 @@ func TestArchiveNewAndRunningRefusals(t *testing.T) {
 	if l := r.status().Get(1); l.State != status.Empty || l.Pending != "" || l.LastArchive != "lane1.prev-first-round.log" {
 		t.Errorf("after archive: %+v", l)
 	}
-	contains(t, "stub", readFile(t, r, "lane.1.sh"), "# swim:stub", "all done")
-	if out, code := r.swim("run", "1"); code == 0 || !strings.Contains(out, "no round ready") {
-		t.Errorf("run stub: %d %s", code, out)
+	if _, err := os.Stat(filepath.Join(r.root, "lane.1.sh")); !os.IsNotExist(err) {
+		t.Errorf("archive left lane.1.sh: %v", err)
+	}
+	contains(t, "status", r.mustSwim("status", "1"), "note: all done")
+	if out, code := r.swim("run", "1"); code == 0 {
+		t.Errorf("run an archived lane: %d %s", code, out)
 	}
 	if out := r.mustSwim("run"); !strings.Contains(out, "nothing ready") {
-		t.Errorf("run with only stubs: %s", out)
+		t.Errorf("run with every lane archived: %s", out)
 	}
 	// The slot is empty: swim new needs no --force.
 	r.mustSwim("new", "1", "second round")
@@ -1997,7 +2000,7 @@ func TestArchiveSeveralLanes(t *testing.T) {
 	contains(t, "--as", r.mustSwim("archive", "1", "2", "--as", "batch"), "lane1.prev-batch.log", "lane2.prev-batch.log")
 	// A job id is a lane too, and the words after the lanes are the note.
 	contains(t, "job id + note", r.mustSwim("archive", "aaaa0003", "cut", "over", "--as", "third"), "lane3.prev-third.log")
-	contains(t, "note", readFile(t, r, "lane.3.sh"), "# swim:stub", "cut over")
+	contains(t, "note", r.mustSwim("status", "3"), "note: cut over")
 }
 
 // long puts a test in the long batch (make test-long, and CI): go test
