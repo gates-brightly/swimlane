@@ -29,12 +29,12 @@ func read(t *testing.T, rel string) string {
 	return string(data)
 }
 
-// pages are the docs: the README, CONTRIBUTING.md, docs/ and
-// docs/reference/.
+// pages are the docs: the README, CONTRIBUTING.md, docs/,
+// docs/reference/ and docs/adr/.
 func pages(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	for _, g := range []string{"docs/*.md", "docs/reference/*.md"} {
+	for _, g := range []string{"docs/*.md", "docs/reference/*.md", "docs/adr/*.md"} {
 		m, _ := filepath.Glob(filepath.Join(root(t), g))
 		out = append(out, m...)
 	}

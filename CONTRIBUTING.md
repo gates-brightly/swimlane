@@ -27,5 +27,8 @@ just next-tag    # tag HEAD with the next release (DRY=1 prints it); see CHANGEL
 - **Docs:** each topic is written once, in `docs/reference/` (the binary
   embeds it for `swim guide`). The README and `docs/guide.md` link there
   rather than repeat it; their commands run in the test suite.
+- **Decisions:** one that shapes swim gets a record in
+  [docs/adr/](docs/adr/README.md) (copy its template); read the record
+  before undoing one.
 - **Incompatible changes:** bump `syntax.Version` (`internal/syntax`) and
   write Upgrading notes in `CHANGELOG.md`.
