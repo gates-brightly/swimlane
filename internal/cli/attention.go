@@ -174,11 +174,15 @@ func cmdAttention() error {
 // passedLine names the lanes whose round passed and nobody has archived
 // yet, or is "" when there are
 // none: their scripts and logs stay in the repo until then. A lane whose
-// script git tracks (a committed CI lane) passes every run: it's left out.
+// script git tracks (a committed CI lane) passes every run: it's left out,
+// and so is one git can't say about (archive would refuse it).
 func passedLine(root string, f *status.File, cfg *config.Config) string {
 	var ns []string
 	for _, l := range f.Lanes {
-		if l.State == status.Passed && cfg.IsActive(l.Lane) && !lane.Tracked(root, lane.Script(root, l.Lane)) {
+		if l.State != status.Passed || !cfg.IsActive(l.Lane) {
+			continue
+		}
+		if tracked, err := lane.Tracked(root, lane.Script(root, l.Lane)); err == nil && !tracked {
 			ns = append(ns, strconv.Itoa(l.Lane))
 		}
 	}

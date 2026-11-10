@@ -75,6 +75,8 @@ func cmdStatus(args []string) error {
 			// LintErrors counts the lint errors its ready round has: any
 			// means swim run and swim queue refuse it (swim lint N).
 			LintErrors int `yaml:"lint_errors,omitempty"`
+			// LastNote is the last archive's note, from .swim.log.
+			LastNote string `yaml:"last_note,omitempty"`
 		}
 		doc := struct {
 			Schema    string    `yaml:"schema"`
@@ -101,7 +103,7 @@ func cmdStatus(args []string) error {
 			if inBatch[lanes[i].Lane] && lanes[i].AtRest() {
 				lanes[i].State = status.Queued
 			}
-			ld := laneDoc{Lane: lanes[i], LintErrors: len(refused[lanes[i].Lane])}
+			ld := laneDoc{Lane: lanes[i], LintErrors: len(refused[lanes[i].Lane]), LastNote: archiveNote(root, lanes[i].LastArchive)}
 			if pv := sv.pending(&lanes[i]); pv != nil {
 				ld.Deps, ld.DepsError = pv.Deps, pv.DepsErr
 				if !reflect.ValueOf(pv.Header).IsZero() {
@@ -250,8 +252,8 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		} else if l.Pending == "" && state != status.Running {
 			if info, _ := lane.ReadScript(root, l.Lane); info.Stub {
 				detail("note: "+info.Message, ui.Dim)
-			} else if !info.Exists && l.LastNote != "" {
-				detail("note: "+l.LastNote, ui.Dim)
+			} else if note := archiveNote(root, l.LastArchive); !info.Exists && note != "" {
+				detail("note: "+note, ui.Dim)
 			} else if !info.Exists && l.LastArchive == "" {
 				detail("no lane script", ui.Dim)
 			}
@@ -346,9 +348,9 @@ func rebuildStatus(root string, cfg *config.Config) error {
 			if err != nil {
 				return err
 			}
-			archive, note := l.LastArchive, l.LastNote
+			archive := l.LastArchive
 			l.ResetRun()
-			l.LastArchive, l.LastNote = archive, note
+			l.LastArchive = archive
 			if !r.Found {
 				l.State, l.Round, l.Job = status.Empty, "", ""
 				l.Rest()
@@ -382,6 +384,28 @@ func rebuildStatus(root string, cfg *config.Config) error {
 		}
 		return nil
 	})
+}
+
+// archiveNote is the note swim archive gave the archive named archive:
+// what follows the name on its archive line in .swim.log ("" without one).
+func archiveNote(root, archive string) string {
+	if archive == "" {
+		return ""
+	}
+	data, err := os.ReadFile(history.Path(root))
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if f := strings.Fields(lines[i]); len(f) < 3 || f[2] != history.Archive {
+			continue
+		}
+		if _, note, ok := strings.Cut(lines[i], "  "+archive+"  "); ok {
+			return strings.TrimSpace(note)
+		}
+	}
+	return ""
 }
 
 // printRunStatus shows each lane as it was in swim run id: its round from

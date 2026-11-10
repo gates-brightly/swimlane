@@ -810,8 +810,12 @@ func cmdArchive(args []string) error {
 		if st, _ := status.Load(root); st != nil {
 			for _, l := range st.Lanes {
 				// A committed lane passes every run: it isn't archived.
-				if l.State == status.Passed && cfg.IsActive(l.Lane) && !lane.Tracked(root, lane.Script(root, l.Lane)) {
-					lanes = append(lanes, l.Lane)
+				// One git can't say about goes on to the check below,
+				// which refuses it.
+				if l.State == status.Passed && cfg.IsActive(l.Lane) {
+					if tracked, err := lane.Tracked(root, lane.Script(root, l.Lane)); err != nil || !tracked {
+						lanes = append(lanes, l.Lane)
+					}
 				}
 			}
 		}
@@ -850,7 +854,13 @@ func cmdArchive(args []string) error {
 			problems = append(problems, strings.Split(err.Error(), "\n")[0])
 			continue
 		}
-		if p := lane.Script(root, n); lane.Tracked(root, p) {
+		p := lane.Script(root, n)
+		if tracked, err := lane.Tracked(root, p); err != nil {
+			// Archive deletes the script: without git's answer it could
+			// be a committed lane's.
+			problems = append(problems, fmt.Sprintf("lane %d: %v", n, err))
+			continue
+		} else if tracked {
 			problems = append(problems, fmt.Sprintf("lane %d is committed (git tracks %s): archive is for working lanes, and its next run replaces its log", n, filepath.Base(p)))
 			continue
 		}
@@ -881,7 +891,7 @@ func cmdArchive(args []string) error {
 	for _, pl := range plans {
 		// The script is the round that ran (not edited since): it goes,
 		// and the slot is empty. The chain keeps a copy by hash; the note
-		// lives on in the status entry and the history.
+		// lives on in the history.
 		var ran *status.Lane
 		if st != nil {
 			ran = st.Get(pl.n)
@@ -900,7 +910,7 @@ func cmdArchive(args []string) error {
 		status.Update(root, pl.n, cfg.Lanes, func(l *status.Lane) {
 			l.ResetRun()
 			l.State, l.Round, l.Job = status.Empty, "", ""
-			l.LastArchive, l.LastNote = filepath.Base(dst), note
+			l.LastArchive = filepath.Base(dst)
 			if remove {
 				l.Pending, l.PendingJob = "", ""
 			}

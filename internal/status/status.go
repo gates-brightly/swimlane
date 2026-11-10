@@ -129,9 +129,10 @@ type Lane struct {
 	// DryRun are the guards the round's run didn't approve (declined, not
 	// asked, refused): their steps ran as dry runs. Cleared when a round
 	// starts.
-	DryRun      []string `yaml:"dry_run,flow,omitempty" json:"dry_run,omitempty"`
-	LastArchive string   `yaml:"last_archive,omitempty" json:"last_archive,omitempty"`
-	LastNote    string   `yaml:"last_note,omitempty" json:"last_note,omitempty"` // swim archive's note
+	DryRun []string `yaml:"dry_run,flow,omitempty" json:"dry_run,omitempty"`
+	// LastArchive is the archive swim archive made last; its note is in
+	// .swim.log, on that archive's line.
+	LastArchive string `yaml:"last_archive,omitempty" json:"last_archive,omitempty"`
 }
 
 // File is the whole status.yml document.
