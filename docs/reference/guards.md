@@ -39,8 +39,8 @@ lane 2 requires human approval of guard ORDERS_ALLOW_SST_REMOVE
 lines. `swim lint` warns on a guard with no why (`guard-why`), one whose
 line says too little or too much (`guard-does`), and a guard call that
 gives its own text (`guard-text`; `guard FLAG "<text>"`, the older form,
-still runs, and `swim lint --fix` drops text that only repeats the
-header). swim strips escape sequences, control characters and bidi
+still runs until the first release on or after 2026-12-01, and `swim
+lint --fix` drops text that only repeats the header). swim strips escape sequences, control characters and bidi
 overrides from both.
 
 ## How a guard is decided

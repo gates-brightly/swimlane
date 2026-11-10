@@ -19,7 +19,6 @@ type Fixed struct {
 	File  string
 	Added []string // header lines added, as written
 	// Renamed: the lines (1-based) whose run calls it rewrote to step.
-	// Remove after the next release (T38).
 	Renamed []int
 	// RoundID: the line (1-based) whose # Job: it rewrote to # Round-ID:.
 	RoundID int
@@ -261,7 +260,8 @@ func headerEnd(lines []string) int {
 // else, if, elif, while or until, or first in a "$(...)") and has an
 // argument after it. Never one in quoted text, a comment or a heredoc body
 // (the bare view blanks those), on a line a \ continues, or in a lane that defines a run of its
-// own. Remove after the next release (T38), with the run alias.
+// own. A run call no longer runs a step (the library's run stops the
+// round), so lint refuses one and --fix renames it.
 func runCalls(v *view) map[int][]int {
 	for i, line := range v.bare {
 		if v.isCode(i) && runDefRE.MatchString(line) {
@@ -324,7 +324,7 @@ func statementStart(before string, continued bool) bool {
 
 // renameRun rewrites src's run calls (runCalls) to step: what swim lint
 // --fix does for a bash lane. It returns the new text and the 0-based
-// lines it changed. Remove after the next release (T38).
+// lines it changed.
 func renameRun(src string) (string, []int) {
 	calls := runCalls(scan(src))
 	if len(calls) == 0 {

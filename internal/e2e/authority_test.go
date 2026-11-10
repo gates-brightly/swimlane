@@ -1,6 +1,6 @@
 package e2e
 
-// A hostile lane under swim run (dev/tasks.md T3, T10): it runs as the
+// A hostile lane under swim run: it runs as the
 // operator, so it can write .swim/, call swim's hidden commands and set
 // guard flags in its own environment. What swim run can
 // refuse it refuses; what it can't, swim verify fails.

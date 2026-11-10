@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -206,6 +206,102 @@ func TestQueueApproveOrphanRemove(t *testing.T) {
 	contains(t, "rm", r.mustSwim("queue", "rm", "3"), "removed")
 	if out := r.mustSwim("queue"); strings.Contains(out, "queued") {
 		t.Errorf("still queued after rm:\n%s", out)
+	}
+}
+
+// T33: swim queue requeue ID --failed queues what didn't pass of a
+// finished batch, pinned as it is now: lane 2 (After: 1) runs again and
+// lane 1, which passed, doesn't. The batch's approval goes with lane 2
+// while its manifest is unchanged (the fix was outside it), and not once
+// its script was fixed.
+func TestRequeueFailed(t *testing.T) {
+	r := newRepo(t)
+	r.script(1, "schema", `step "schema" true`)
+	r.script(2, "backfill", `if guard ALLOW_FIX; then step "fixed" true; fi
+step "ready" test -e "$SWIM_ROOT/ready"`)
+	withHeader(t, r, 2, "# Guards:  ALLOW_FIX backfill the rows")
+	r.after(2, "1")
+	last := func() queue.Entry {
+		done := doneEntries(t, r)
+		sort.Slice(done, func(a, b int) bool { return done[a].Seq < done[b].Seq })
+		return done[len(done)-1]
+	}
+
+	r.mustSwim("queue", "1", "2", "--approve", "ALLOW_FIX")
+	r.swim("watch", "--once", "--plain")
+	if e := last(); e.Result == nil || e.Result.Result == "passed" {
+		t.Fatalf("batch 1: %+v", e.Result)
+	}
+	ran1 := r.status().Get(1).Run // lane 1's round, which passed
+	if ran1 == "" || r.status().Get(1).State != status.Passed {
+		t.Fatalf("lane 1 after #1: %+v", r.status().Get(1))
+	}
+	if out, code := r.swim("queue", "requeue", "1", "--failed", "--bogus"); code == 0 {
+		t.Errorf("an unknown flag: exit 0\n%s", out)
+	}
+
+	// The fix is outside lane 2's manifest: its approval goes with it.
+	r.write("ready", "", 0o644)
+	out := r.mustSwim("queue", "requeue", "1", "--failed")
+	contains(t, "requeue --failed", out, "requeued what didn't pass of #1 as #2", "lane 2", "approvals: ALLOW_FIX")
+	if strings.Contains(out, "not carried") {
+		t.Errorf("an unchanged lane's approval wasn't carried:\n%s", out)
+	}
+	r.swim("watch", "--once", "--plain")
+	if e := last(); e.Seq != 2 || len(e.Lanes) != 1 || e.Lanes[0].Lane != 2 || e.Result == nil || e.Result.Result != "passed" {
+		t.Fatalf("batch 2: %+v %+v\n%s", e.Lanes, e.Result, r.log(2))
+	}
+	if run := r.status().Get(1).Run; run != ran1 {
+		t.Errorf("lane 1 passed in #1, but ran again (run %s)", run)
+	}
+	contains(t, "lane2.log", r.log(2), "APPROVED  backfill the rows", "PASS  fixed", "PASS  ready")
+	if out, code := r.swim("queue", "requeue", "2", "--failed"); code == 0 || !strings.Contains(out, "every lane of #2 passed") {
+		t.Errorf("requeue a batch that passed: exit %d\n%s", code, out)
+	}
+
+	// Fail lane 2 again, then fix its script: the approval stays behind.
+	os.Remove(filepath.Join(r.root, "ready"))
+	r.mustSwim("queue", "2", "--approve", "ALLOW_FIX")
+	r.swim("watch", "--once", "--plain")
+	r.script(2, "backfill", `if guard ALLOW_FIX; then step "fixed" true; fi
+step "ready" true`)
+	withHeader(t, r, 2, "# Guards:  ALLOW_FIX backfill the rows")
+	r.after(2, "1")
+	out = r.mustSwim("queue", "requeue", "3", "--failed")
+	contains(t, "requeue a changed lane", out, "as #4", "not carried: ALLOW_FIX (lane 2 changed since it was queued)")
+	if strings.Contains(out, "approvals:") {
+		t.Errorf("a changed lane's approval was carried:\n%s", out)
+	}
+	r.swim("watch", "--once", "--plain")
+	rounds := strings.Split(r.log(2), "== ROUND ")
+	round := rounds[len(rounds)-1] // the log keeps the lane's earlier rounds
+	contains(t, "lane2.log, changed", round, "SKIP  backfill the rows", "PASS  ready")
+	if strings.Contains(round, "APPROVED") {
+		t.Errorf("the changed lane ran its guard approved:\n%s", round)
+	}
+	if run := r.status().Get(1).Run; run != ran1 {
+		t.Errorf("lane 1 ran again (run %s)", run)
+	}
+
+	// Same script, a changed env file (staging to prod): the approval
+	// covered the env too, so it stays behind.
+	r.script(2, "backfill", `if guard ALLOW_FIX; then step "fixed" true; fi
+step "ready" test -e "$SWIM_ROOT/ready"`)
+	withHeader(t, r, 2, "# Guards:  ALLOW_FIX backfill the rows")
+	r.after(2, "1")
+	os.Remove(filepath.Join(r.root, "ready"))
+	envFiles(t, r, "", "[lane 2]\nTARGET=staging\n")
+	r.mustSwim("queue", "2", "--approve", "ALLOW_FIX")
+	r.swim("watch", "--once", "--plain")
+	if e := last(); e.Seq != 5 || e.Result == nil || e.Result.Result == "passed" {
+		t.Fatalf("batch 5: %+v", e.Result)
+	}
+	r.write("ready", "", 0o644)
+	r.write(".env.swim", "[lane 2]\nTARGET=prod\n", 0o600)
+	out = r.mustSwim("queue", "requeue", "5", "--failed")
+	contains(t, "requeue after an env change", out, "as #6", "not carried: ALLOW_FIX (lane 2 changed since it was queued)")
+	if strings.Contains(out, "approvals:") {
+		t.Errorf("an approval was carried across an env change:\n%s", out)
 	}
 }
 
@@ -426,28 +522,28 @@ func TestWatchBatchesSideBySide(t *testing.T) {
 	r := newRepo(t)
 	// work is the middle step: side by side, swim 1's holds until swim 2
 	// has started (the test releases it then), so the two overlap however
-	// slow the machine.
+	// slow the machine. Each step appends its name to one file: the order
+	// of its lines, not a clock, says what ran first (fault_test.go's
+	// ledgerEnv says why).
 	stamp := func(name, work string) string {
-		return fmt.Sprintf(`step "%[1]s start" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.start"'
+		return fmt.Sprintf(`step "%[1]s start" bash -c 'echo "%[1]s.start" >> "$SWIM_ROOT/order"'
 step "%[1]s work" %[2]s
-step "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
+step "%[1]s end" bash -c 'echo "%[1]s.end" >> "$SWIM_ROOT/order"'`, name, work)
 	}
 	r.script(1, "slow one", stamp("one", hold("two-started")))
 	r.script(2, "two", stamp("two", "true"))
-	times := func(name string) []float64 {
-		data, _ := os.ReadFile(filepath.Join(r.root, name))
-		var out []float64
-		for _, f := range strings.Fields(string(data)) {
-			v, _ := strconv.ParseFloat(f, 64)
-			out = append(out, v)
+	// times are the places (from 1) of name's lines in the order file.
+	times := func(name string) []int {
+		data, _ := os.ReadFile(filepath.Join(r.root, "order"))
+		var out []int
+		for i, f := range strings.Fields(string(data)) {
+			if f == name {
+				out = append(out, i+1)
+			}
 		}
 		return out
 	}
-	reset := func() {
-		for _, f := range []string{"one.start", "one.end", "two.start", "two.end"} {
-			os.Remove(filepath.Join(r.root, f))
-		}
-	}
+	reset := func() { os.Remove(filepath.Join(r.root, "order")) }
 
 	// Side by side: 2 starts before 1 ends; a second batch of lane 1 waits
 	// for the first.
@@ -467,10 +563,10 @@ step "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 		t.Fatalf("starts %v ends %v two %v\n%s", one, oneEnd, two, out)
 	}
 	if two[0] >= oneEnd[0] {
-		t.Errorf("batch 3 (lane 2) waited for batch 1 (lane 1): started %.1fs after it ended", two[0]-oneEnd[0])
+		t.Errorf("batch 3 (lane 2) waited for batch 1 (lane 1): it started after it ended")
 	}
 	if one[1] < oneEnd[0] {
-		t.Errorf("two batches of lane 1 overlapped: the second started %.1fs before the first ended", oneEnd[0]-one[1])
+		t.Errorf("two batches of lane 1 overlapped: the second started before the first ended")
 	}
 	if done := doneEntries(t, r); len(done) != 3 {
 		t.Fatalf("consumed %d of 3", len(done))
@@ -485,6 +581,47 @@ step "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 	if oneEnd, two := times("one.end"), times("two.start"); len(oneEnd) != 1 || len(two) != 1 || two[0] < oneEnd[0] {
 		t.Errorf("--batches 1: lane 2 started at %v, lane 1 ended at %v", two, oneEnd)
 	}
+}
+
+// A waiting batch says why it waits, as the watcher's scheduler decides:
+// its lane is running in another swim run, or an older batch has it. swim
+// queue says it under the entry, --yaml as waits:; a batch nothing is in
+// the way of says nothing.
+func TestQueueSaysWhyABatchWaits(t *testing.T) {
+	r := newRepo(t)
+	r.script(1, "holds", `step "hold" `+hold("go"))
+	r.script(2, "two", `step "two" true`)
+	r.script(3, "three", `step "three" true`)
+	run := start(t, r.cmd(bin, "run", "1", "--plain"), nil)
+	r.waitStep(t, 1, "hold")
+	r.mustSwim("queue", "add", "1")
+	r.mustSwim("queue", "add", "1", "2")
+	r.mustSwim("queue", "add", "3")
+
+	out := r.mustSwim("queue")
+	pid := laneOf(r, 1).PID
+	contains(t, "swim queue", out, fmt.Sprintf("waits: lane 1 is running (pid %d)", pid), "waits: an older batch, #1, has lane 1")
+	if n := strings.Count(out, "waits:"); n != 2 {
+		t.Errorf("%d waits: lines, want 2 (batch #3 is free):\n%s", n, out)
+	}
+	var doc struct {
+		Entries []struct {
+			Seq   int    `yaml:"seq"`
+			Waits string `yaml:"waits"`
+		} `yaml:"entries"`
+	}
+	if err := yaml.Unmarshal([]byte(r.mustSwim("queue", "--yaml")), &doc); err != nil {
+		t.Fatal(err)
+	}
+	waits := map[int]string{}
+	for _, e := range doc.Entries {
+		waits[e.Seq] = e.Waits
+	}
+	if want := fmt.Sprintf("lane 1 is running (pid %d)", pid); waits[1] != want || waits[2] != "an older batch, #1, has lane 1" || waits[3] != "" {
+		t.Errorf("--yaml waits: %v", waits)
+	}
+	r.release("go")
+	run.wait(t)
 }
 
 // T39: a batch that approves none of its lanes' guards warns on stderr,

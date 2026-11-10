@@ -47,7 +47,14 @@ type watchView struct {
 	asked int
 	// started is when the screen came up, for the title's clock.
 	started time.Time
+	// requeued maps a finished batch r requeued (what didn't pass) to the
+	// new batch's number.
+	requeued map[string]int
 }
+
+// watchFinished is how many of the batches that ended without passing
+// since the screen came up it lists, newest last.
+const watchFinished = 3
 
 // watchRedraw is how often the watch screen reloads and redraws.
 const watchRedraw = 200 * time.Millisecond
@@ -283,6 +290,9 @@ func (w *watchView) rows() []display.PickRow {
 		rows = append(rows, display.PickRow{Text: "(empty: q on lanes, then s, queues them as one batch)", Color: ui.Dim})
 	}
 	queue.SortWaiting(entries)
+	// Why each waiting batch waits, as this watcher's scheduler decides it.
+	held := heldReasons(w.root)
+	waits := batchWaits(w.root, w.cfg, w.batches == nil, entries, func(e *queue.Entry) bool { return held[e.ID] != "" })
 	anyRunning := false
 	for _, e := range entries {
 		anyRunning = anyRunning || e.State == queue.Running
@@ -320,9 +330,99 @@ func (w *watchView) rows() []display.PickRow {
 		if e.Note != "" {
 			b.add("", "  "+ui.Safe(e.Note))
 		}
+		if why := held[e.ID]; why != "" && state == queue.Queued {
+			b.add(ui.Red, "  · left queued: "+why)
+		} else if why := waits[e.ID]; why != "" {
+			b.add(ui.Yellow, "  · waits: "+why)
+		}
 		rows = append(rows, b.row("queue:"+e.ID, color))
 	}
+	// The batches that ended without passing while the screen was up: r
+	// requeues what didn't pass.
+	for _, e := range w.finished() {
+		b := &rowText{p: ui.Painter{On: true}}
+		b.add(ui.Bold, fmt.Sprintf("#%-4d", e.Seq)).add(ui.StateColor(e.Result.Result), fmt.Sprintf("   %-9s", e.Result.Result))
+		b.add(ui.Dim, fmt.Sprintf(" %-7s ", "")).add("", "lane ")
+		for i, l := range e.Lanes {
+			if i > 0 {
+				b.add("", ",")
+			}
+			b.add(ui.LaneColor(l.Lane)+ui.Bold, strconv.Itoa(l.Lane))
+		}
+		if seq, ok := w.requeued[e.ID]; ok {
+			b.add(ui.Dim, fmt.Sprintf("  · requeued as #%d", seq))
+		} else {
+			b.add(ui.Dim, "  · r requeues lane "+joinNums(notPassed(e)))
+		}
+		rows = append(rows, b.row("queue:"+e.ID, ui.Dim))
+	}
 	return rows
+}
+
+// finished are the last watchFinished batches that ended, without
+// passing, since the screen came up.
+func (w *watchView) finished() []*queue.Entry {
+	all, err := queue.List(w.root, true)
+	if err != nil {
+		return nil
+	}
+	var out []*queue.Entry
+	for _, e := range all {
+		if e.State != queue.Done || e.Result == nil || e.Result.Result == status.Passed || len(notPassed(e)) == 0 {
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339, e.Result.Finished); err != nil || t.Before(w.started.Truncate(time.Second)) {
+			continue
+		}
+		out = append(out, e)
+	}
+	if len(out) > watchFinished {
+		out = out[len(out)-watchFinished:]
+	}
+	return out
+}
+
+// notPassed are the lanes of finished batch e that didn't pass: what
+// swim queue requeue --failed queues.
+func notPassed(e *queue.Entry) []int {
+	passed := map[int]bool{}
+	if e.Result != nil {
+		for _, r := range e.Result.Lanes {
+			passed[r.Lane] = r.Result == status.Passed
+		}
+	}
+	var out []int
+	for _, l := range e.Lanes {
+		if !passed[l.Lane] {
+			out = append(out, l.Lane)
+		}
+	}
+	return out
+}
+
+// requeueFailed is r on a finished batch: swim queue requeue ID --failed.
+// The new batch waits its turn like any other.
+func (w *watchView) requeueFailed(e *queue.Entry) string {
+	if seq, ok := w.requeued[e.ID]; ok {
+		return fmt.Sprintf("#%d was requeued already, as #%d", e.Seq, seq)
+	}
+	b, err := requeueFailed(w.root, w.cfg, e)
+	var refused lintRefused
+	if errors.As(err, &refused) {
+		return fmt.Sprintf("not requeued: swim lint refuses it (swim lint %s)", joinNums(notPassed(e)))
+	}
+	if err != nil {
+		return err.Error()
+	}
+	if w.requeued == nil {
+		w.requeued = map[string]int{}
+	}
+	w.requeued[e.ID] = b.entry.Seq
+	msg := fmt.Sprintf("requeued what didn't pass of #%d as #%d (lane %s)", e.Seq, b.entry.Seq, joinLanes(b.entry))
+	if len(b.dropped) > 0 {
+		msg += "; not carried: " + strings.Join(b.dropped, "; ")
+	}
+	return msg
 }
 
 // status is the title line's right side: what the watcher has in hand, as
@@ -656,11 +756,17 @@ func (w *watchView) act(id string, key rune) string {
 		if key == 'o' {
 			return w.toggleStream()
 		}
+		if e.State == queue.Done {
+			if key == 'r' {
+				return w.requeueFailed(e)
+			}
+			return fmt.Sprintf("#%d ended %s: r requeues what didn't pass", e.Seq, e.Result.Result)
+		}
 		if key == 'q' {
 			return fmt.Sprintf("#%d is already in the queue (r runs it now)", e.Seq)
 		}
 		if key == 'a' {
-			return "a archives a lane (its log kept, its script a stub): pick the lane (a batch's result stays in the queue's done list)"
+			return "a archives a lane (its log kept, its script removed): pick the lane (a batch's result stays in the queue's done list)"
 		}
 		return w.runQueued(e)
 	}

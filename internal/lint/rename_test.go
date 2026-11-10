@@ -7,8 +7,7 @@ import (
 
 // swim lint --fix rewrites the run calls in a bash lane to step, and
 // nothing else named run: not swim run, go run, npm run, nor a run in
-// quoted text, a comment or a heredoc body. Remove after the next
-// release (T38), with the run alias.
+// quoted text, a comment or a heredoc body.
 func TestRenameRun(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{`run "build" go build ./...`, `step "build" go build ./...`},
@@ -49,14 +48,14 @@ func TestRenameRun(t *testing.T) {
 	}
 }
 
-// A run call is warned (run-is-step) on its line; step isn't.
+// A run call is refused (run-is-step) on its line; step isn't.
 func TestRunIsStep(t *testing.T) {
 	src := replace(clean(1), "stage verify\n", "stage verify\nrun \"old\" true\n")
 	n := 0
 	for _, f := range Lint(cfg4(), map[int]string{1: src, 2: clean(2)}, 1) {
 		if f.Code == "run-is-step" {
 			n++
-			if !strings.HasPrefix(f.Message, "run is now step") || strings.Split(src, "\n")[f.Line-1] != `run "old" true` {
+			if !strings.HasPrefix(f.Message, "run was renamed step") || f.Level != "error" || strings.Split(src, "\n")[f.Line-1] != `run "old" true` {
 				t.Errorf("finding %+v", f)
 			}
 		}

@@ -239,6 +239,41 @@ func TestWatchArchiveKey(t *testing.T) {
 	}
 }
 
+// A batch that ended without passing stays on the screen, saying what r
+// does; r on it requeues what didn't pass (swim queue requeue ID --failed).
+func TestWatchRequeuesFailedBatch(t *testing.T) {
+	r := newSerialRepo(t)
+	r.script(1, "ok", `step "fine" true`)
+	r.script(2, "broken", `step "breaks" false`)
+	tr := r.startTUI(nil, "watch")
+	tr.waitFor("a archive")
+	r.mustSwim("queue", "1", "2")
+	tr.waitFor("r requeues lane 2")
+	for i := 0; i < 6; i++ {
+		tr.send("\x1b[B")
+	}
+	tr.waitFor("▸ #1 ")
+	tr.send("r")
+	tr.waitFor("requeued what didn't pass of #1 as #2 (lane 2)")
+	// #2 runs lane 2 alone, and fails as it did.
+	tr.waitScreen("#2 ended", func(s string) bool {
+		return strings.Contains(s, "requeued as #2") && strings.Contains(s, "r requeues lane 2")
+	})
+	tr.send("\x03")
+	tr.wait() // exits as its batches went: 1, they failed
+	var lanes []int
+	for _, e := range doneEntries(t, r) {
+		if e.Seq == 2 {
+			for _, l := range e.Lanes {
+				lanes = append(lanes, l.Lane)
+			}
+		}
+	}
+	if fmt.Sprint(lanes) != "[2]" {
+		t.Errorf("#2's lanes: %v, want [2]", lanes)
+	}
+}
+
 // The main screen streams the running lanes' output under the queue; o
 // hides it.
 func TestWatchStreamsRunningOutput(t *testing.T) {
@@ -335,6 +370,29 @@ func (tr *tuiRun) waitQueueRow(seq int, state string, more ...string) string {
 		}
 		return false
 	})
+}
+
+// A waiting batch's row on the watch screen says why it waits: its lane
+// is running in another swim run, or an older batch has it. Once the lane
+// is free, both run.
+func TestWatchSaysWhyABatchWaits(t *testing.T) {
+	r := newSerialRepo(t)
+	r.script(1, "holds", `step "hold" `+hold("go"))
+	r.script(2, "two", `step "two" true`)
+	run := start(t, r.cmd(bin, "run", "1", "--plain"), nil)
+	r.waitStep(t, 1, "hold")
+	r.mustSwim("queue", "add", "1")
+	r.mustSwim("queue", "add", "1", "2")
+	tr := r.startTUI(nil, "watch")
+	tr.waitQueueRow(1, "queued", fmt.Sprintf("waits: lane 1 is running (pid %d)", laneOf(r, 1).PID))
+	tr.waitQueueRow(2, "queued", "waits: an older batch, #1, has lane 1")
+	r.release("go")
+	run.wait(t)
+	tr.waitFor("#2 passed")
+	tr.send("\x03")
+	if code, _ := tr.wait(); code != 0 {
+		t.Errorf("exit %d after ctrl-c", code)
+	}
 }
 
 // With two swim watch screens up, a batch submitted on one runs on that

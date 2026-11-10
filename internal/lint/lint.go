@@ -113,8 +113,7 @@ var Checks = []Check{
 	{"guard-dynamic", finding.Error, false, "a guard whose flag is named at run time, without `# Guards: *`", checkGuardDynamic},
 	{"guard-unused", finding.Warn, false, "a flag listed in `# Guards:` but never used", checkGuardUnused},
 	{"step", finding.Error, false, "a step, gate or snapshot written so it can't run as it reads: an unknown option, no label or command, a command for a label, a command quoted into one word, or cd/export in a step", checkStepCall},
-	// Remove after the next release (T38), with the run alias.
-	{"run-is-step", finding.Warn, false, "a call of run, the old name of step (swim lint --fix rewrites it)", checkRunIsStep},
+	{"run-is-step", finding.Error, false, "a call of run, step's old name, which no longer runs a step: it stops the round (swim lint --fix rewrites it)", checkRunIsStep},
 	{"job-is-round-id", finding.Warn, false, "a # Job: line, Round-ID's old name (swim lint --fix rewrites it)", checkJobIsRoundID},
 	{"step-subshell", finding.Error, false, "a step, gate or snapshot inside $(...), backticks or after a pipe, where its result never reaches the lane", checkStepSubshell},
 	{"step-pipe", finding.Error, false, "a pipe or redirect after a step, which applies to swim's output, not the step's command", checkStepPipe},

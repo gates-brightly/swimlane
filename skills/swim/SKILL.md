@@ -79,7 +79,8 @@ hand a round over, workers, several tasks at once. Follow it.
    and exits with its result (0 passed, 3 dry run, 1 otherwise).
 6. **Read:** `swim status N`. A failed step comes with its why, one line:
    `FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:41: got 1`. When
-   that isn't enough, `swim log N`. `passed` means exit 0: read the verify
+   that isn't enough, `swim log N --failed`: the failed steps' output in
+   full, and no passing steps (`swim log N` for the whole round). `passed` means exit 0: read the verify
    stage's output. A dry run changed nothing.
 7. **Close out:** once you've read what shows it worked, `swim archive N
    "<why it's done>" --as <what-happened>`: the log is kept, the lane's

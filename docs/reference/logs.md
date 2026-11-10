@@ -4,6 +4,7 @@
 swim log N            # a lane's latest round (--all: archives too; --follow: follow it until it ends)
 swim wait N           # block until lane N's round ends; exit with its result
 swim log <round-id|run> # one round / one run
+swim log N --failed   # only what a fix needs: the failed steps in full (--yaml too)
 swim log              # .swim.log, the project log
 swim log --since 1h   # what happened since: a duration, a UTC time, a run or a round id
 swim status [N]       # every lane's state
@@ -13,6 +14,15 @@ swim status [N]       # every lane's state
 times`; lines differing only in numbers never fold); `--full` expands,
 `--raw` prints the file. The running step shows as `RUNNING <label> (in
 progress)` with its output so far.
+
+After a failure, read `swim log N --failed`: the round's header, each step
+that failed, stopped or drifted with its command and output in full, the
+stage it ran in and one line for the step before it (`before it: <label>
+(PASS)`), then the END lines. Passing steps are counted (`(4 passed steps
+not shown)`), not shown; a round with none failed says `no failed steps`
+and exits 0. `--failed --yaml` keeps only the failed results, each with
+`before:`, the label of the result before it. Bare `swim` points at it for
+a failed round.
 
 ## The lane log
 

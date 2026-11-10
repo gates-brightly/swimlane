@@ -41,16 +41,6 @@ func laneEnv(cmd string) (string, error) {
 	return n, nil
 }
 
-// hasDashDash reports whether args has a "--" separator.
-func hasDashDash(args []string) bool {
-	for _, a := range args {
-		if a == "--" {
-			return true
-		}
-	}
-	return false
-}
-
 // laneStep runs one step for swim step/gate/snapshot inside a lane: the
 // options and label, then the command after "--".
 func laneStep(cmd string, args []string) error {
@@ -218,7 +208,8 @@ const endWait = 10 * time.Second
 // swim guard FLAG: exit 0 if the operator approves what the header says
 // FLAG does, 1 if not (recorded as a dry run). As the library's guard:
 // FLAG=1 approves up front; unset, swim asks the operator. The older form,
-// swim guard FLAG "<action>", gives the text in the call.
+// swim guard FLAG "<action>", gives the text in the call; it goes in the
+// first release on or after 2026-12-01 (guardTextGoes, internal/lint).
 func cmdGuard(args []string) error {
 	n, err := laneEnv("guard")
 	if err != nil {

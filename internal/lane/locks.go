@@ -12,10 +12,11 @@ import (
 )
 
 // Resource locks across concurrent swim runs in one repo: one file per lock
-// under .swim/locks/, held with flock. The lock lives as long as some process
-// holds the open file: the launcher passes it to the lane's process, so a
-// killed launcher doesn't release a lock its lane still uses, and a killed
-// lane never leaves a stale one. The file's text says who holds it.
+// under .swim/locks/, held with flock by the launcher until the lane's
+// process ends. The kernel drops a flock when its holder exits, so a killed
+// launcher never leaves a stale one. The lane's process doesn't get the
+// file: anything it left running would hold the lock for good. The file's
+// text says who holds it.
 
 // ValidLockName reports whether name can be a lock: letters, digits, '.',
 // '_', '-' and '/'.
@@ -51,8 +52,7 @@ func lockText(data []byte) string {
 	return strings.TrimSpace(strings.Join(keep, "\n"))
 }
 
-// Release unlocks and closes them (the lane's process may still hold its
-// inherited copy until it exits). Each file then says it's free, and who
+// Release unlocks and closes them. Each file then says it's free, and who
 // held it last.
 func (fl FileLocks) Release() {
 	for _, f := range fl {

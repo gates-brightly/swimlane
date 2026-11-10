@@ -23,6 +23,7 @@ batch again on its own.
 swim queue show ID          # the entry: its lanes, approvals, and the watcher that claimed it
 swim log N                  # for each lane in it: how far did it get?
 swim queue requeue ID       # run it again: back of the queue, same lanes, pins and approvals
+swim queue requeue ID --failed   # after a fix: only the lanes that didn't pass, pinned as they are now
 swim queue rm ID            # or drop it
 ```
 

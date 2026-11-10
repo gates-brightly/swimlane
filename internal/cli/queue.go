@@ -445,6 +445,11 @@ type queueOpts struct {
 	approve  []string
 	note     string
 	parallel *int
+	// carry is set for a requeued batch: each lane as it was queued (its
+	// manifest and env). A flag in approve is then kept only if every lane
+	// here that holds its guard has neither changed; the others are dropped
+	// (not refused) and named in the batch's dropped.
+	carry map[int]queue.Lane
 }
 
 // askingSwimmer is the first of the live watchers whose screen asks the
@@ -497,6 +502,8 @@ type batch struct {
 	// asker is a watcher up as it was queued whose screen asks the
 	// operator for its guards (nil for none).
 	asker *queue.Presence
+	// dropped are the approvals a requeue didn't carry, each with why.
+	dropped []string
 }
 
 // addBatch queues lanes as one batch, pinned to the scripts and env they
@@ -510,7 +517,7 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 		return b, err
 	}
 	var err error
-	if e.Lanes, e.Approve, b.guards, err = pinBatch(root, cfg, lanes, o.approve); err != nil {
+	if e.Lanes, e.Approve, b.guards, b.dropped, err = pinBatch(root, cfg, lanes, o.approve, o.carry); err != nil {
 		return b, err
 	}
 	e.ID = queue.NewID()
@@ -554,35 +561,83 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 
 // pinBatch pins lanes as a batch holds them, with the guards they hold and
 // approve (each must name one of those guards: a typo would otherwise
-// approve nothing, silently).
-func pinBatch(root string, cfg *config.Config, lanes []int, approve []string) ([]queue.Lane, []string, map[string]bool, error) {
+// approve nothing, silently). With carry (a requeue, queueOpts.carry) a
+// flag is kept only where every lane holding its guard is pinned to the
+// manifest and env carry names; the rest come back as dropped, with why.
+func pinBatch(root string, cfg *config.Config, lanes []int, approve []string, carry map[int]queue.Lane) ([]queue.Lane, []string, map[string]bool, []string, error) {
 	var pinned []queue.Lane
 	guards := map[string]bool{}
+	holders := map[string][]queue.Lane{} // flag -> the lanes whose guard it is
 	for _, n := range lanes {
 		l, info, err := pinLane(root, cfg, n)
 		if err != nil {
-			return nil, nil, guards, err
+			return nil, nil, guards, nil, err
 		}
 		pinned = append(pinned, l)
 		for _, g := range info.Guards {
 			guards[g.Flag] = true
+			holders[g.Flag] = append(holders[g.Flag], l)
 		}
 	}
-	var approved []string
+	var approved, dropped []string
 	seen := map[string]bool{}
 	for _, f := range approve {
 		f = strings.TrimSpace(f)
 		if f == "" || seen[f] {
 			continue
 		}
-		if !guards[f] {
-			return nil, nil, guards, fmt.Errorf("--approve %s: no lane in this batch has a guard %s (its guards: %s)", f, f, or(strings.Join(sortedKeys(guards), ", "), "none"))
-		}
 		seen[f] = true
+		if carry != nil {
+			// A lane left out (it passed) took its guards with it.
+			var changed []string
+			for _, l := range holders[f] {
+				if !sameApproval(carry[l.Lane], l) {
+					changed = append(changed, strconv.Itoa(l.Lane))
+				}
+			}
+			if len(changed) > 0 {
+				dropped = append(dropped, fmt.Sprintf("%s (lane %s changed since it was queued)", f, strings.Join(changed, ",")))
+			}
+			if len(changed) > 0 || len(holders[f]) == 0 {
+				continue
+			}
+		} else if !guards[f] {
+			return nil, nil, guards, nil, fmt.Errorf("--approve %s: no lane in this batch has a guard %s (its guards: %s)", f, f, or(strings.Join(sortedKeys(guards), ", "), "none"))
+		}
 		approved = append(approved, f)
 	}
 	sort.Strings(approved)
-	return pinned, approved, guards, nil
+	return pinned, approved, guards, dropped, nil
+}
+
+// requeueFailed queues, as a new batch, the lanes of finished batch e that
+// didn't pass (failed, interrupted, skipped, or never ended), pinned to
+// their scripts as they are now: the fix. e's approvals go with it only
+// for lanes whose manifest and env haven't changed (queueOpts.carry). The lanes
+// that passed are left out, and an # After: on one of them is met, as for
+// any lane outside a run whose round passed.
+func requeueFailed(root string, cfg *config.Config, e *queue.Entry) (batch, error) {
+	if e.State != queue.Done || e.Result == nil {
+		return batch{}, fmt.Errorf("#%d is %s: --failed requeues what didn't pass of a finished batch (swim queue requeue %d runs all of it again)", e.Seq, e.State, e.Seq)
+	}
+	lanes := notPassed(e)
+	carry := map[int]queue.Lane{}
+	for _, l := range e.Lanes {
+		carry[l.Lane] = l
+	}
+	if len(lanes) == 0 {
+		return batch{}, fmt.Errorf("every lane of #%d passed: nothing to requeue", e.Seq)
+	}
+	return addBatch(root, cfg, lanes, queueOpts{approve: e.Approve, note: fmt.Sprintf("what didn't pass of #%d", e.Seq), parallel: e.Parallel, carry: carry})
+}
+
+// sameApproval reports whether an approval given for lane was (as queued)
+// still covers it as pinned now (now): the same manifest and the same env
+// files' hash, which manifest_sha256 leaves out. A lane missing either
+// (an entry from an older swim) doesn't qualify.
+func sameApproval(was, now queue.Lane) bool {
+	return now.Manifest != "" && was.Manifest == now.Manifest &&
+		was.EnvSHA256 != nil && now.EnvSHA256 != nil && *was.EnvSHA256 == *now.EnvSHA256
 }
 
 // pinLane is lane n as a queue entry holds it: its job and round, pinned
@@ -750,10 +805,13 @@ func queueList(args []string) error {
 		}
 		entries = append(done, rest...)
 	}
+	held := heldReasons(root)
+	waits := queueWaits(root, entries, held)
 	if asYAML {
 		type row struct {
 			*queue.Entry `yaml:",inline"`
 			State        string `yaml:"state"`
+			Waits        string `yaml:"waits,omitempty"`
 		}
 		var rows []row
 		for _, e := range entries {
@@ -761,16 +819,24 @@ func queueList(args []string) error {
 			if state == queue.Done && e.Result != nil {
 				state = e.Result.Result // an ended batch: how it ended
 			}
-			rows = append(rows, row{e, state})
+			rows = append(rows, row{e, state, waits[e.ID]})
 		}
-		return yaml.NewEncoder(os.Stdout).Encode(map[string]any{"schema": "swim.queue-list/v1", "entries": rows})
+		doc := map[string]any{"schema": "swim.queue-list/v1", "entries": rows}
+		if ws := watchers(root); len(ws) > 0 {
+			doc["watchers"] = ws
+		}
+		return yaml.NewEncoder(os.Stdout).Encode(doc)
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	// Where the batches run, last: what an agent queuing from another
+	// machine writes its lanes for.
+	if line := watcherLine(root); line != "" {
+		defer fmt.Println(p.Paint(ui.Dim, line))
+	}
 	if len(entries) == 0 {
 		fmt.Println("queue is empty. Queue a batch: swim queue N|ROUND-ID ... [--approve FLAG]")
 		return nil
 	}
-	held := heldReasons(root)
 	for _, e := range entries {
 		var ns []string
 		for _, l := range e.Lanes {
@@ -800,9 +866,23 @@ func queueList(args []string) error {
 		fmt.Printf("#%-3d %s  %s  lane %s%s  %s\n", e.Seq, e.ID, p.Paint(color, state), strings.Join(ns, ","), appr, p.Paint(ui.Dim, e.Note))
 		if why := held[e.ID]; why != "" && e.State == queue.Queued {
 			fmt.Println("     " + p.Paint(ui.Red, "left queued: "+why))
+		} else if why := waits[e.ID]; why != "" {
+			fmt.Println("     " + p.Paint(ui.Yellow, "waits: "+why))
 		}
 	}
 	return nil
+}
+
+// queueWaits is why each queued batch in entries waits (batchWaits), as
+// the watcher decides it: side by side unless watch_batches is 1. A
+// batch a live watcher holds (held) waits for one that can run it, which
+// left queued says instead.
+func queueWaits(root string, entries []*queue.Entry, held map[string]string) map[string]string {
+	cfg, err := loadCfg(root)
+	if err != nil {
+		return nil
+	}
+	return batchWaits(root, cfg, cfg.WatchBatchesFor() < 2, entries, func(e *queue.Entry) bool { return held[e.ID] != "" })
 }
 
 func queueShow(args []string) error {
@@ -849,16 +929,47 @@ func queueRemove(args []string) error {
 }
 
 func queueRequeue(args []string) error {
-	if len(args) != 1 {
-		return usagef("usage: swim queue requeue ID")
+	var failed bool
+	args, err := flags{bools: map[string]*bool{"failed": &failed}}.parse(args)
+	if err != nil {
+		return err
 	}
-	root, _, err := repo()
+	if len(args) != 1 {
+		return usagef("usage: swim queue requeue ID [--failed]")
+	}
+	root, cfg, err := repo()
 	if err != nil {
 		return err
 	}
 	e, err := queue.Find(root, args[0])
 	if err != nil {
 		return err
+	}
+	if failed {
+		b, err := requeueFailed(root, cfg, e)
+		var refused lintRefused
+		if errors.As(err, &refused) {
+			finding.WriteText(os.Stderr, refused.fs)
+			fmt.Fprintln(os.Stderr, "swim queue: not requeued: swim run would refuse it; fix the errors above (swim lint shows every check), then requeue again")
+			return exitError{2}
+		}
+		if err != nil {
+			return err
+		}
+		if b.warn != "" {
+			fmt.Fprintln(os.Stderr, "swim queue: "+b.warn)
+		}
+		refreshStatus(root, cfg)
+		n := b.entry
+		fmt.Printf("requeued what didn't pass of #%d as #%d (%s): lane %s\n", e.Seq, n.Seq, n.ID, joinLanes(n))
+		if len(n.Approve) > 0 {
+			fmt.Println("  approvals: " + strings.Join(n.Approve, ", "))
+		}
+		if len(b.dropped) > 0 {
+			fmt.Println("  not carried: " + strings.Join(b.dropped, "; ") + ": approve again, or a watcher's screen asks")
+		}
+		fmt.Printf("  wait for it: swim wait %s\n", n.ID)
+		return nil
 	}
 	if e.State == queue.Queued {
 		return fmt.Errorf("%s is already waiting in the queue", e.ID)

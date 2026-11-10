@@ -305,15 +305,18 @@ var Commands = map[string]string{
   it starts now (FLAG=1 in this environment), and says whether swim run
   would ask or dry-run. Only what the header sets is shown (Fail: hard, a
   target, an owner other than you too). A lane another session is writing
-  shows its claim (swim new took it); your own doesn't.
-  --yaml     the status file's fields as YAML, tagged schema: swim.status/v1;
+  shows its claim (swim new took it); your own doesn't. Under the queue
+  line, the watcher that runs it and its platform (as swim queue).
+  --yaml    the status file's fields as YAML, tagged schema: swim.status/v1;
              each ready lane adds pending_header {after, guards: [{flag,
              description, approved, how, asks}], timeout,
              locks, includes, fail, targets, owner} and deps: [{lane, job (its round id),
              state, note}] (deps_error if its After: doesn't resolve);
              claims: the lanes' live claims (swim new takes one), by lane
-             (with N|ROUND-ID, just that lane); the file itself is unchanged
-             (cat .swim/status.yml)
+             (with N|ROUND-ID, just that lane); watchers: the swim watch
+             processes up, or the last one seen (up: false), each with
+             host, pid, version and platform {os, arch, bash}; the file
+             itself is unchanged (cat .swim/status.yml)
   --rebuild  reconstruct status.yml from lane scripts and logs
   --run RUN  each lane as it was in swim run RUN (from the logs, archives
              included, and .swim.log for lanes skipped before they started)
@@ -324,8 +327,7 @@ var Commands = map[string]string{
   step and record PASS or FAIL <label>; a failure doesn't end the round.
   Options: --timeout D, --retry N, --backoff D, --retry-on CODES,
   --no-retry-timeout, --soft, --expect-fail[=CODES], --key K, --target T.
-  (In a bash lane, use the library's step.) The old in-lane form, swim run
-  "<label>" -- cmd, still works for one release.
+  (In a bash lane, use the library's step.)
 `,
 	"gate": `swim gate [options] "<label>" -- cmd [args...]
 
@@ -344,8 +346,9 @@ var Commands = map[string]string{
   In a lane script in any language: exit 0 if the operator approves what
   the header says FLAG does and why (# Guards: FLAG  <does>, and under it
   #   why: <why>), 1 if not. (swim guard FLAG "<action>", the older form,
-  gives the text in the call.) FLAG=1 approves up front; unset, swim asks the
-  operator; anything else records SKIP as a dry run.
+  gives the text in the call; it goes on 2026-12-01.) FLAG=1 approves up
+  front; unset, swim asks the operator; anything else records SKIP as a
+  dry run.
   Under swim run the launcher decides: FLAG=1 counts only if swim run's own
   environment set it (a FLAG=1 the lane sets is a dry run).
   One flag per destructive action; list it in the header (or lane.N.yml):
@@ -394,7 +397,7 @@ swim archive --passed ["<note>"]
   --lane N|ROUND-ID   tie the note to a lane (and its round id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
+	"log": `swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow] [--failed]
 swim log --since <1h|TIME|RUN|ROUND-ID>
 
   Print logs:
@@ -410,6 +413,13 @@ swim log --since <1h|TIME|RUN|ROUND-ID>
     swim log ROUND-ID   just that round (full id or 8+ characters),
                         from whichever current or archived log holds them
     swim log RUN        every lane's round from that swim run, in lane order
+    swim log N --failed only what a fix needs from the latest round: its header,
+                        each step that failed, stopped or drifted with its
+                        command and output in full, the stage it was in and
+                        the step before it, then the END lines; passing steps
+                        are counted, not shown. "no failed steps" (exit 0) if
+                        none did. With --yaml, only the failed results, each
+                        with the step before it (before:)
   On a terminal the log is rendered: round and stage headers stand out,
   results are coloured, times show how far into the round they were, and
   step output longer than 40 lines is folded to its first and last 15.
@@ -487,6 +497,7 @@ swim log --since <1h|TIME|RUN|ROUND-ID>
 swim queue N|ROUND-ID ... [--approve FLAG[,FLAG]]... [--parallel N] [--note TEXT]
 swim queue add [flags]           every ready round that hasn't passed
 swim queue show|rm|requeue ID
+swim queue requeue ID --failed   what didn't pass, as a new batch
 
   Queue a batch of rounds to run as soon as its lanes are free, by a
   watcher (swim watch). Get a batch ready, queue it with its approvals, and let it
@@ -518,11 +529,25 @@ swim queue show|rm|requeue ID
             warns. The entry records the swim that queued it (swim).
   list      waiting, running and orphaned entries, and the last 5 consumed
             (--all: every one); --yaml for scripts (schema swim.queue-list/v1).
-            A batch a watcher leaves queued says why ("left queued: ...")
+            A batch a watcher leaves queued says why ("left queued: ..."),
+            and a waiting one what it waits for ("waits: lane 2 is running
+            (pid 4121)", "waits: an older batch, #3, has lane 4"); --yaml
+            carries it as waits:. Its last line names the watchers up and
+            what their lanes run on ("watcher: zach-mbp, darwin/arm64, bash
+            3.2"), or with none up the last one seen (.swim/watcher.yml);
+            --yaml: watchers:
   show ID   the entry file; ID is its id, a 4+ character prefix, or #seq
   rm ID     remove an entry that isn't running
   requeue ID  put an orphaned (its watcher died) or consumed entry back at the
             end of the queue
+            --failed  instead, queue a new batch of a finished batch's lanes
+                      that didn't pass (failed, interrupted, skipped), pinned
+                      to their scripts as they are now (the fix). The lanes
+                      that passed stay out, and # After: on one is met. Its
+                      approvals go with it only for lanes whose manifest
+                      and env files' hash haven't changed; it names the
+                      ones it didn't carry.
+                      On swim watch's screen, r on a finished batch does it.
   A claimed entry is orphaned when its watcher is gone: on the watcher's host,
   its process (pid and start time) is; from another host sharing the queue,
   its heartbeat is older than its lease (queue_lease, default 2m). A claim by
@@ -712,8 +737,9 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   action as the description), # Guards: * for a flag it names at run time,
   # Includes: for a repo file it sources or imports. In a bash lane it
   also renames run, step's old name, to step. It never removes a line or
-  rewrites one otherwise, and skips running lanes and lanes of jobs. It
-  also rewrites a # Job: line, Round-ID's old name, to # Round-ID:.
+  rewrites one otherwise, and skips running lanes and lanes of
+  jobs. It also rewrites a # Job: line, Round-ID's old name, to
+  # Round-ID:.
 
   Checks [code] (level):
     round (error)          no # Round: line
@@ -734,8 +760,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                            (refused when it asks; a warning with # Guards: *)
     guard-dynamic (error)  guard "$FLAG" without # Guards: *
     guard-unused (warn)    a # Guards: flag no guard uses
-    run-is-step (warn)     a call of run, step's old name (works for this
-                           release only; --fix renames it)
+    run-is-step (error)    a call of run, step's old name: it no longer runs
+                           a step but stops the round (--fix renames it)
     job-is-round-id (warn) a # Job: line, Round-ID's old name (--fix renames
                            it)
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
@@ -814,7 +840,9 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     leftover (warn)           a file under .swim/ swim no longer reads
                               (hub.yml, headless.*, groups/, observations/,
                               out/, checkpoints/, earmarks/, lane1.2.claim,
-                              ...)
+                              ...), or a .swim.lock, which only a swim older
+                              than v0.20261105.5 writes (it names the version;
+                              --fix deletes it unless git tracks it)
     stub (warn)               a lane.N.sh stub an older swim archive left
                               (--fix deletes it unless git tracks it)
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)

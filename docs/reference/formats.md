@@ -39,12 +39,9 @@ A `# Task: renew-certs` header names a lane. The name is an alias: the
 lane's number is still what manifests, the chain, and status record. Renaming a task changes the script's bytes,
 like any edit. Where swim takes a lane, it reads its argument in this
 order:
-1. With a `--` among the arguments (`swim run "<label>" -- cmd`, inside a
-   lane: the old name of `swim step`, for one more release), it's a step,
-   and nothing is resolved.
-2. All digits: a lane number.
-3. A task name, matched exactly.
-4. A round id, or a prefix of 8 or more characters.
+1. All digits: a lane number.
+2. A task name, matched exactly.
+3. A round id, or a prefix of 8 or more characters.
 
 `# After:` reads a task name the same way.
 

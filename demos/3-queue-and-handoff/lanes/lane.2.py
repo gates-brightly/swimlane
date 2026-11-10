@@ -25,7 +25,7 @@ swim("gate", "sessions table exists", "--", "fakecloud", "rows", "sessions")
 print(f"{len(stale())} stale sessions", flush=True)   # plain Python, logged with the round
 
 swim("stage", "change")
-if swim("guard", "SESSIONS_ALLOW_PURGE", "delete sessions older than the 2.4.1 deploy") == 0:
+if swim("guard", "SESSIONS_ALLOW_PURGE") == 0:   # what it does is the header's
     swim("step", "delete stale sessions", "--", "fakecloud", "delete", "sessions", "stale")
 
 swim("stage", "verify")

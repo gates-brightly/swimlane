@@ -54,9 +54,4 @@ func render(t string, data any) (string, error) {
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// shellSafe keeps a message usable inside the stub's double-quoted echo.
-func shellSafe(s string) string {
-	return strings.NewReplacer(`"`, "'", "`", "'", "$", "", `\`, "/").Replace(s)
-}
-
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

@@ -41,8 +41,13 @@ history stays here, since `swim changelog --since` reads it.
 **What changed for you**
 
 - A guard says what it does and why: `# Guards: FLAG  <does>`, then `#   why: <reason, date>` under it; the approval asks both.
-- `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy).
+- `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy). `guard FLAG "<text>"` goes in the first release on or after 2026-12-01.
 - `swim archive` refuses a committed lane instead of stubbing it; no swim writes stubs any more.
+- `swim log N --failed`: just the failed steps of the round, output in full; bare `swim` points at it.
+- A waiting batch says what it waits for, on the watch screen and in `swim queue`: `waits: lane 2 is running (pid 4121)`.
+- `run`, step's old name, no longer runs a step: it stops the round ("run was renamed step"), lint refuses it, and `swim lint --fix` renames it.
+- `swim queue` and `swim status` say what the watcher's lanes run on: `watcher: zach-mbp, darwin/arm64, bash 3.2`.
+- After a fix, `swim queue requeue ID --failed` (or `r` on the batch in `swim watch`) runs only what didn't pass.
 
 ### Changed
 
@@ -64,12 +69,51 @@ history stays here, since `swim changelog --since` reads it.
   read for dubious ownership): "can't ask git whether it tracks
   lane.1.sh: ...". They used to take that as "not tracked" and could
   delete a committed lane's script or stub.
+- **`swim doctor` finds a `.swim.lock`:** only a swim older than
+  v0.20261105.5 writes one now, so the warning (`leftover`) names the
+  version that wrote it; if the file comes back after you remove it, an
+  old swim is still running here.
+  `--fix` deletes an untracked one; for a committed one it says `git rm`.
 - **The archive note lives in `.swim.log` only:** status.yml no longer
   keeps a copy (`last_note`). `swim status` and `swim status --yaml`
   (still `last_note`) read it from the archive's line there.
 
 ### Added
 
+- **`swim log N --failed`:** only what a fix needs from the latest round
+  (or a round id's): its header, each step that failed, stopped or
+  drifted with its command and output in full (never folded), the stage
+  it was in and one line for the step before it, then the END lines.
+  Passing steps are counted, not shown; a round with none failed says
+  `no failed steps` and exits 0. `--failed --yaml` keeps only the failed
+  results, each with `before:` (swim.log/v1 gains the field). Bare `swim`
+  points a failed lane at it (`→ swim log 2 --failed`).
+- **The watcher says what platform lanes run on:** each `swim watch`
+  records its OS, architecture and the bash its lanes get (asked once,
+  as it starts) with its heartbeat. `swim queue` ends with `watcher:
+  zach-mbp, darwin/arm64, bash 3.2`, `swim status` shows it under its
+  queue line, and both `--yaml` carry `watchers:` (host, pid, version,
+  `platform: {os, arch, bash}`, `up`). With none up they show the last
+  one seen (`.swim/watcher.yml`), marked `up: false` and "none up; last
+  seen ...". An agent in a Linux sandbox can see its lanes will run on
+  darwin with bash 3.2 instead of assuming its own machine.
+- **A waiting batch says why it waits:** its row on the watch screen and
+  its entry in `swim queue` end with what's in the way, as the watcher's
+  scheduler decides it: `waits: lane 2 is running (pid 4121)` (or waiting
+  in another swim run), `waits: lane 2 is in batch #5`, `waits: an older
+  batch, #3, has lane 4`. With `--batches 1`, the oldest waits for every
+  lane to be free and the rest say `an older batch, #3, runs first`.
+  `swim queue --yaml` carries it as `waits:`.
+- **`swim queue requeue ID --failed`:** after a fix, queue a finished
+  batch's lanes that didn't pass (failed, interrupted, skipped) as a new
+  batch, pinned to their scripts as they are now. The lanes that passed
+  stay out, and an `# After:` on one is met. The batch's approvals go
+  with it only for lanes whose manifest and env files' hash haven't
+  changed (what `--approve` covered); it names the
+  ones it didn't carry ("not carried: FLAG (lane 2 changed since it was
+  queued)"), so a fixed lane's guard is asked again or dry-runs. On
+  `swim watch`'s screen, a batch that ended without passing stays
+  listed, and `r` on it does the same.
 - **Why a guard is there:** a `#   why: <reason>` line right under a
   `# Guards: FLAG  <what it does>` line says why the change is made. The
   approval prompt, `swim watch`, its notifications (and the phone's) and
@@ -98,6 +142,23 @@ history stays here, since `swim changelog --since` reads it.
   `# Guards:` line `--fix` adds comes with a `#   why: <...>` line to
   fill in. `swim new`'s template, the guides and the skill use the new
   form.
+
+### Removed
+
+- **The `run` alias for `step`:** the library's `run` and the in-lane
+  `swim run "<label>" -- cmd` no longer run a step. They were kept for
+  one release after the rename, and 0.20261110.1 shipped it. Each now
+  stops the round where it's called ("run was renamed step"), so a lane
+  that still calls one fails rather than drop the step's result.
+  `run-is-step` is now a lint error (`swim run` refuses the lane), and
+  `swim lint --fix` still renames the calls.
+
+### Upgrading
+
+- **A lane that still calls `run` is refused** (`run-is-step`), and
+  run some other way it stops there. `swim lint --fix` renames the calls
+  to `step`; in a wrapped lane, rename `swim run "<label>" -- cmd` to
+  `swim step "<label>" -- cmd` yourself.
 
 ## 0.20261110.1 (v0.20261110.1, 2026-11-10)
 

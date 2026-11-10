@@ -65,22 +65,44 @@ touch "$SWIM_ROOT/after-gate"
 	}
 }
 
-// run, step's old name, still runs a step for one release: in a bash lane
-// (lint warns run-is-step) and as swim run "<label>" -- cmd in a wrapped
-// one. Remove after the next release (T38).
-func TestRunAliasForStep(t *testing.T) {
+// run, step's old name, no longer runs a step, and a lane that calls it
+// fails rather than drop the step: lint refuses the call (run-is-step,
+// so swim run refuses the lane), the library's run stops the round where
+// it's called, and so does swim run "<label>" -- cmd in a wrapped lane.
+// --fix renames the call.
+func TestRunWasRenamedStep(t *testing.T) {
 	r := newRepo(t)
-	r.write("lane.1.sh", "#!/usr/bin/env swim\n# swim: syntax 4\n# Round: old bash name\nrun \"old bash\" true\nstep \"new bash\" true\n", 0o755)
-	r.write("lane.2.sh", "#!/usr/bin/env bash\n# Round: old wrapped name\nswim run \"old wrapped\" -- true\nswim step \"new wrapped\" -- true\n", 0o755)
-	if out, code := r.swim("run", "1", "2", "--plain"); code != 0 {
-		t.Fatalf("exit %d:\n%s", code, out)
+	// Written as is: r.script's lint --fix would rename the call.
+	r.write("lane.1.sh", "#!/usr/bin/env bash\n# swim: syntax 4\n# Round: old bash name\n_swim_lib=$(\"${SWIM_BIN:-swim}\" _lib) || exit 1; eval \"$_swim_lib\"\nlane_init 1\nstage check\nrun \"the check\" false\nstep \"after\" true\nsummary\n", 0o755)
+	out, code := r.swim("lint", "1")
+	if code == 0 || !strings.Contains(out, "[run-is-step]") || !strings.Contains(out, "run was renamed step") {
+		t.Fatalf("lint passes a run call (exit %d):\n%s", code, out)
 	}
-	contains(t, "lane 1", r.log(1), "PASS  old bash", "PASS  new bash")
-	contains(t, "lane 2", r.log(2), "PASS  old wrapped", "PASS  new wrapped")
-	out, _ := r.swim("lint", "1")
-	contains(t, "lint", out, "[run-is-step]", "run is now step")
+	if out, code := r.swim("run", "1", "--plain"); code == 0 || strings.Contains(r.log(1), "PASS  after") {
+		t.Errorf("swim run ran a lane lint refuses (exit %d):\n%s", code, out)
+	}
+	// Run without swim run's lint: the round stops at the run call.
+	if err := r.cmd("bash", "lane.1.sh").Run(); err == nil {
+		t.Error("a lane calling run exited 0")
+	}
+	log := r.log(1)
+	contains(t, "lane 1", log, "STOP  run was renamed step", "== END FAIL")
+	if strings.Contains(log, "after") {
+		t.Errorf("the round went on past run:\n%s", log)
+	}
+
+	r.write("lane.2.sh", "#!/usr/bin/env bash\n# Round: old wrapped name\nswim run \"old wrapped\" -- true\nswim step \"after\" -- true\n", 0o755)
+	if out, code := r.swim("run", "2", "--plain"); code == 0 {
+		t.Errorf("a wrapped lane calling swim run -- passed:\n%s", out)
+	}
+	log = r.log(2)
+	contains(t, "lane 2", log, "swim run was renamed swim step", "== END FAIL")
+	if strings.Contains(log, "PASS  after") {
+		t.Errorf("the wrapped round went on past swim run:\n%s", log)
+	}
+
 	r.swim("lint", "1", "--fix")
-	if data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh")); !strings.Contains(string(data), "step \"old bash\" true") {
+	if data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh")); !strings.Contains(string(data), "step \"the check\" false") {
 		t.Errorf("lint --fix left:\n%s", data)
 	}
 }

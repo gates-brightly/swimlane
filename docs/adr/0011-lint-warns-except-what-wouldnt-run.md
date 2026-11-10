@@ -44,8 +44,11 @@ Only the first is something swim can know.
   fixed, not argued.
 - A new check starts as a warning unless it's about how swim reads the
   script; promoting one means showing the form runs other than it reads.
-- A test runs each refused form through lint and the runtime, so the two
-  can't drift.
+- A corpus test runs the ways a step and a header line are written
+  through both lint and the runtime: what lint passes runs as written,
+  and what it refuses the runtime refuses too. Lint's other errors are
+  tested in lint alone. A form seen to run other than it reads gets a
+  line in the corpus.
 
 ## See also
 

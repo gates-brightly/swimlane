@@ -127,7 +127,7 @@ func TestSchedulerProperties(t *testing.T) {
 				}
 				for _, p := range d.Lanes[i].After {
 					if pv, ok := ivs[p]; ran && ok && iv.start < pv.end {
-						t.Errorf("lane %d started %.3fs before lane %d (its After:) finished", n, float64(pv.end-iv.start)/1e9, p)
+						t.Errorf("lane %d started before lane %d (its After:) finished", n, p)
 					}
 				}
 			}

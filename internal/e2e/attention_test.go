@@ -26,7 +26,7 @@ func TestBareSwimSaysWhatNeedsYou(t *testing.T) {
 	out := r.mustSwim()
 	for _, want := range []string{
 		"needs you",
-		"lane 1   failed exit 1 · fails  → swim log 1",
+		"lane 1   failed exit 1 · fails  → swim log 1 --failed",
 		"lane 2   won't run: 1 lint error · lint refuses it  → swim lint 2",
 		"lane 4: queued, no watcher up  → swim watch",
 		"ready\n  lane 3  → swim queue 3",

@@ -624,12 +624,6 @@ func archiveMoves(root string, n int, what string) ([][2]string, error) {
 	return moves, nil
 }
 
-// WriteScript writes content to lane.N.sh (mode 0755) unless the lane is
-// running. Unless force is set it also refuses to replace a ready round.
-func WriteScript(root string, n int, content string, force bool) error {
-	return WriteScriptAs(root, n, "sh", content, force)
-}
-
 // WriteScriptAs writes content to lane.N.<ext> (mode 0755) unless the lane
 // is running, replacing the lane's script in any other language and its
 // sidecar (a stub or a new round starts clean). Unless force is set it

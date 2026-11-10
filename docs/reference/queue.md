@@ -8,6 +8,7 @@ swim queue 4 5 --approve FLAG --note "cutover"   # a batch
 swim queue add                          # every ready lane, as one batch
 swim queue                              # queued, running, orphaned, ended (its result)
 swim queue show|rm|requeue ID
+swim queue requeue ID --failed          # what didn't pass of a finished batch, as a new one
 swim watch [--once]                     # the watcher
 swim wait BATCH [--timeout D]           # until that batch ends; exits with its result
 swim wait [--any] N|BATCH|RUN ...       # until those end (--any: the first)
@@ -21,6 +22,13 @@ swim wait [--timeout D]                 # until nothing runs or is queued
   its lanes holds.
 - **Approvals travel with it** (`--approve FLAG`, each flag); the
   watcher's environment approves nothing.
+- **After a fix:** `swim queue requeue ID --failed` queues a finished
+  batch's lanes that didn't pass as a new batch, pinned to their scripts
+  as they are now. The lanes that passed stay out (an `# After:` on one
+  is met). Approvals go with it only for lanes whose manifest and env
+  files' hash haven't changed, as `--approve` covered both: a fixed lane,
+  or one whose env moved (staging to prod), has its guard asked again, or
+  dry-runs.
 - **A window:** queue now, start `swim watch --once` when it opens (by
   hand or cron).
 
@@ -28,7 +36,10 @@ swim wait [--timeout D]                 # until nothing runs or is queued
 
 - Runs batches side by side as their lanes come free: none in another
   batch or run. Oldest first, but a later batch whose lanes are free goes
-  ahead. Up to `--batches N` (`watch_batches`, 4) at once.
+  ahead. Up to `--batches N` (`watch_batches`, 4) at once. A waiting
+  batch says what it waits for, on the watch screen and in `swim queue`
+  (`--yaml`: `waits:`): `waits: lane 2 is running (pid 4121)`, `waits:
+  lane 2 is in batch #5`, `waits: an older batch, #3, has lane 4`.
 - **Asks for guards on its screen:** a guard nothing else approved waits
   under a yellow `Waiting for you` bar; `y`/`n` answers it. Without the
   screen (`--plain`, not a terminal) a batch never asks: its guards
@@ -37,10 +48,17 @@ swim wait [--timeout D]                 # until nothing runs or is queued
   now, `q` adds it to the next batch and `s` submits it, `Q` queues every
   ready round that hasn't passed, `l` shows logs, `Enter` follows a batch or lane,
   `o` hides the output stream. `(~)` marks a lane that changed since you
-  last acted on it.
+  last acted on it. A batch that ended without passing while the screen
+  was up stays listed: `r` on it requeues what didn't pass (`swim queue
+  requeue ID --failed`).
 - **Several watchers** can share one queue: claiming is atomic, and a
   running batch renews a heartbeat (`queue_lease`, 2m), so from another host
   a dead watcher's batch shows as orphaned (see
   [recovery](recovery.md#an-orphaned-queue-entry)).
+- **Says what its lanes run on:** each watcher records its host, OS and
+  architecture, and the bash its lanes get. `swim queue` ends with it
+  (`watcher: zach-mbp, darwin/arm64, bash 3.2`), as does `swim status`
+  under its queue line, and both `--yaml` (`watchers:`). With none up,
+  they show the last one seen (`.swim/watcher.yml`), marked as such.
 - Ctrl-C stops the batches in hand gracefully. Each ended batch goes to
   `.swim/queue/done/` with its result.

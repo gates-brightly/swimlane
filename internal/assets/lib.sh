@@ -374,11 +374,12 @@ step() {
   _swim_run_step "" "$@"
 }
 
-# run — the old name of step, kept for one release (swim lint warns
-# run-is-step; swim lint --fix rewrites it). Remove after the next release
-# (T38).
+# run — step's old name. It stops the round rather than run the step, so a
+# lane that still calls it fails there instead of losing the step's result
+# (a missing command would only log a WARN). swim lint refuses the call
+# (run-is-step) and swim lint --fix renames it.
 run() {
-  _swim_run_step "" "$@"
+  _swim_stop "run was renamed step: write step \"<label>\" cmd (swim lint --fix does)"
 }
 
 # gate [options] "<label>" cmd [args...] — like step, but a failure (after
@@ -413,7 +414,8 @@ any_failed() {
 
 # guard FLAG — true if the operator approves what the header says FLAG
 # does and why (# Guards: FLAG  <does>, then #   why: <why>). An older
-# form, guard FLAG "<action>", gives the text in the call.
+# form, guard FLAG "<action>", gives the text in the call; it goes in the
+# first release on or after 2026-12-01 (guardTextGoes, internal/lint).
 # FLAG=1 approves up front (CI, scripts). With FLAG unset and an operator
 # at the terminal, swim asks: "swim N requires human approval of guard
 # FLAG ... the lane says: <action> Y/N [N]"; y approves (recorded with who

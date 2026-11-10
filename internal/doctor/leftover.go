@@ -79,7 +79,39 @@ func checkLeftover(o *Options) []finding.Finding {
 		out = append(out, fd(finding.Warn, "leftover", file, "swim doctor --fix (deletes it)",
 			"swim no longer reads it (left by %s)", what))
 	}
-	return out
+	return append(out, checkOldLock(o)...)
+}
+
+// oldLock is the repo-root file swim before v0.20261105.5 wrote (swim init,
+// swim lock) and asked you to commit. Only an older swim writes it now:
+// the finding names the version that wrote it, and says that one coming
+// back means such a swim still runs here (the file may just be old).
+const oldLock = ".swim.lock"
+
+// checkOldLock finds .swim.lock. --fix deletes an untracked one; a tracked
+// one is the operator's to git rm (swim never writes to git), as is one git
+// can't answer for.
+func checkOldLock(o *Options) []finding.Finding {
+	p := filepath.Join(o.Root, oldLock)
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return nil
+	}
+	by := "a swim older than v0.20261105.5"
+	var v struct {
+		Version string `yaml:"version"`
+	}
+	if yaml.Unmarshal(data, &v) == nil && v.Version != "" {
+		by = "swim " + v.Version
+	}
+	fix := "swim doctor --fix (deletes it)"
+	if tracked, err := lane.Tracked(o.Root, p); err != nil {
+		fix = "delete it or git rm it yourself; --fix won't: " + err.Error()
+	} else if tracked {
+		fix = "git rm " + oldLock + " (swim never writes to git)"
+	}
+	return []finding.Finding{fd(finding.Warn, "leftover", oldLock, fix,
+		"swim no longer reads it; it was written by %s. If it comes back, an old swim is still running here", by)}
 }
 
 func checkExpiredClaims(o *Options) []finding.Finding {
@@ -169,6 +201,10 @@ func (o *Options) removeLeftover(f finding.Finding) (bool, error) {
 		ok = why != "" && dir == queue.WorkersDir(o.Root)
 	case "leftover":
 		ok = dir == filepath.Join(o.Root, ".swim") && retiredWhat(filepath.Base(p)) != ""
+		if p == filepath.Join(o.Root, oldLock) {
+			tracked, err := lane.Tracked(o.Root, p)
+			ok = err == nil && !tracked
+		}
 	case "stub":
 		// Only one git says it doesn't track: when git can't answer, the
 		// stub stays (the finding says why).

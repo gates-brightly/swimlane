@@ -3,8 +3,11 @@ package queue
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,8 +36,66 @@ type Presence struct {
 	// batches side by side), rather than dry-running what they don't
 	// approve.
 	Asks bool `yaml:"asks,omitempty"`
+	// Platform is what its lanes run on. Empty from a swim before it was
+	// recorded.
+	Platform Platform `yaml:"platform,omitempty"`
 
 	path string
+}
+
+// Platform is the machine a watcher runs lanes on: its OS and
+// architecture (as Go names them) and the bash its lanes get, so an agent
+// on another machine writes lanes for that one, not its own.
+type Platform struct {
+	OS   string `yaml:"os,omitempty"`
+	Arch string `yaml:"arch,omitempty"`
+	// Bash is $BASH_VERSION of the bash on the watcher's PATH
+	// ("3.2.57(1)-release"), "" when there's none.
+	Bash string `yaml:"bash,omitempty"`
+}
+
+// String is the platform for a line: "darwin/arm64, bash 3.2".
+func (p Platform) String() string {
+	if p.OS == "" {
+		return ""
+	}
+	s := p.OS + "/" + p.Arch
+	if p.Bash == "" {
+		return s + ", no bash"
+	}
+	v := p.Bash
+	if f := strings.SplitN(v, ".", 3); len(f) >= 2 {
+		v = f[0] + "." + f[1]
+	}
+	return s + ", bash " + v
+}
+
+// thisPlatform is this machine's platform, its bash asked once.
+func thisPlatform() Platform {
+	p := Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	if out, err := exec.Command("bash", "-c", `printf %s "$BASH_VERSION"`).Output(); err == nil {
+		p.Bash = strings.TrimSpace(string(out))
+	}
+	return p
+}
+
+// LastPath holds the last watcher seen here: each watcher writes its
+// presence there too, with every heartbeat, and it stays after the
+// watcher stops.
+func LastPath(root string) string { return filepath.Join(root, ".swim", "watcher.yml") }
+
+// LastWatcher is the last watcher seen here (nil for none, ever): with
+// none up, the machine queued lanes most likely run on.
+func LastWatcher(root string) *Presence {
+	data, err := os.ReadFile(LastPath(root))
+	if err != nil {
+		return nil
+	}
+	p := &Presence{}
+	if yaml.Unmarshal(data, p) != nil || p.PID == 0 {
+		return nil
+	}
+	return p
 }
 
 // WorkersDir holds the running workers' presence files.
@@ -42,6 +103,7 @@ func WorkersDir(root string) string { return filepath.Join(root, ".swim", "worke
 
 // An Announcer keeps this process's presence file written while it runs.
 type Announcer struct {
+	root string
 	mu   sync.Mutex
 	p    Presence
 	stop chan struct{}
@@ -55,10 +117,10 @@ func Announce(root, user string, lease time.Duration) *Announcer {
 		lease = DefaultLease
 	}
 	pid := os.Getpid()
-	a := &Announcer{stop: make(chan struct{}), p: Presence{
+	a := &Announcer{root: root, stop: make(chan struct{}), p: Presence{
 		Worker: Worker{Host: hostname(), PID: pid, User: user, Start: proc.Start(pid),
 			Claimed: now().UTC().Format(time.RFC3339), Lease: lease.String()},
-		Version: version.String(), Syntax: syntax.Reads,
+		Version: version.String(), Syntax: syntax.Reads, Platform: thisPlatform(),
 		path: filepath.Join(WorkersDir(root), fmt.Sprintf("%s-%d.yml", hostname(), pid)),
 	}}
 	os.MkdirAll(WorkersDir(root), 0o755)
@@ -134,6 +196,7 @@ func (a *Announcer) write() {
 	a.p.Heartbeat = now().UTC().Format(time.RFC3339)
 	if data, err := yaml.Marshal(&a.p); err == nil {
 		fsutil.WriteAtomic(a.p.path, data, 0o644)
+		fsutil.WriteAtomic(LastPath(a.root), data, 0o644)
 	}
 }
 

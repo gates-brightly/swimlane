@@ -114,7 +114,7 @@ var Checks = []Check{
 	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
 	{"claim-expired", true, "a lane claim (.swim/claims/) past its lease", checkExpiredClaims},
 	{"watch-gone", true, "a swim watch presence file (.swim/workers/) whose process is gone, or whose heartbeat stopped", checkWatchGone},
-	{"leftover", true, "a file under .swim/ that swim no longer reads (hub.yml, headless.*, groups/, observations/, out/, checkpoints/, earmarks/, ...)", checkLeftover},
+	{"leftover", true, "a file under .swim/ that swim no longer reads (hub.yml, headless.*, groups/, observations/, out/, checkpoints/, earmarks/, ...), or a .swim.lock an older swim wrote", checkLeftover},
 	{"stub", true, "a lane.N.sh stub an older swim archive left (--fix deletes an untracked one)", checkStubs},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than 14 days, of no lane's latest round", checkOldStages},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
@@ -142,8 +142,8 @@ func Fixable(code string) bool {
 
 // Fix applies the safe repairs for fs (the .gitignore block, stale pid
 // files, expired claims, dead watches' presence files, old pinned copies,
-// files under .swim/ swim no longer reads, and untracked archive stubs) and
-// returns what it did. It checks each again before removing it, and never
+// files under .swim/ swim no longer reads, an untracked .swim.lock, and
+// untracked archive stubs) and returns what it did. It checks each again before removing it, and never
 // touches config, lane scripts other than stubs, git, lane logs, the chain, status.yml, the queue, .swim/scripts
 // or snapshots.
 func Fix(o Options, fs []finding.Finding) ([]string, error) {

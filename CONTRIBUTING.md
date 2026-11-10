@@ -12,8 +12,10 @@ just next-tag    # tag HEAD with the next release (DRY=1 prints it); see CHANGEL
   time; its `TestScenario*` tests run whole lane DAGs offline
   ([e2e/README.md](e2e/README.md)).
 - **Security:** `go test ./internal/e2e -run TestSecurity -v`, one subtest
-  per audit case. A known gap skips with `gap: T<n>`, naming the task in
-  `dev/tasks.md` that closes it.
+  per audit case. A known gap skips with `gap: <what swim doesn't do
+  yet>`, so the suite lists what's open. A `T<n>` in a test's comment
+  names a task from the old `dev/tasks/` (removed in 3ff2cf1): `git show
+  3ff2cf1^:dev/tasks.md` lists them.
 - **Crashes:** `go test ./internal/e2e -run TestFault` builds swim with
   `-tags swimfailpoint` and kills it at the points `internal/failpoint`
   lists; `SWIM_FAILPOINT=<point>:kill|pause` tries one by hand.
