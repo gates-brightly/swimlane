@@ -1,0 +1,83 @@
+name: test
+
+# The Forgejo side of CI: every push to main (and every pull request) on
+# fj runs this repo's CI lanes through swim ci, as GitHub's test workflow
+# does (lane.1.sh lists them). Linux only: the runner is a Docker
+# container (runs-on: docker); macOS and bash 3.2 stay GitHub's.
+#
+# A failure sends an ntfy notification when the NTFY_URL secret is set
+# (the topic's URL: https://ntfy.sh/<topic>, or your own server's); with
+# NTFY_TOKEN set too, it's sent as that token's user (a private topic).
+# Without NTFY_URL the run is red and nothing is sent.
+#
+# Forgejo runs only .forgejo/workflows when the directory exists, so
+# .github/workflows doesn't run here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: docker
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Full URLs: Forgejo resolves a bare actions/... against its own
+      # mirror.
+      - uses: https://github.com/actions/checkout@v4
+
+      - uses: https://github.com/actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The suites call git, ssh-keygen/ssh-agent, python3, curl, pgrep
+      # and ps. The runner's image usually has them; install what's
+      # missing (as root, Debian or Ubuntu images).
+      - name: Test tools
+        run: |
+          need=()
+          for t in git:git ssh-keygen:openssh-client ssh-agent:openssh-client python3:python3 curl:curl pgrep:procps ps:procps; do
+            command -v "${t%%:*}" >/dev/null || need+=("${t#*:}")
+          done
+          if [ ${#need[@]} -gt 0 ]; then
+            echo "installing: ${need[*]}"
+            apt-get update -qq && apt-get install -y -qq --no-install-recommends $(printf '%s\n' "${need[@]}" | sort -u)
+          fi
+          bash --version | head -1
+          go version
+
+      # swim tests itself: the CI is committed lanes, run by the swim built
+      # from this checkout. Same as `just ci`.
+      - name: Build swim from this checkout
+        run: |
+          mkdir -p "$RUNNER_TEMP/swim-bin"
+          go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim
+          echo "$RUNNER_TEMP/swim-bin" >> "$GITHUB_PATH"
+
+      - name: swim ci (checks, then e2e, fault, security, fuzz, unit, race)
+        run: swim ci --junit swim.xml
+
+      # Forgejo's artifact store speaks v3's protocol.
+      - name: Upload swim logs and JUnit
+        if: always()
+        uses: https://code.forgejo.org/actions/upload-artifact@v3
+        with:
+          name: swim-logs
+          path: |
+            .swim/logs
+            .swim.log
+            swim.xml
+            e2e*.xml
+          if-no-files-found: ignore
+
+      - name: Tell ntfy it failed
+        if: failure()
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
+        run: scripts/ntfy-failed.sh CI
