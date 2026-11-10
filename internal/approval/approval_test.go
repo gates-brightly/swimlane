@@ -425,3 +425,34 @@ func TestRecordFromTheLane(t *testing.T) {
 func SetReadTimeout(d time.Duration) time.Duration {
 	return time.Duration(readTimeout.Swap(int64(d)))
 }
+
+// A guard the pinned header describes is asked in the header's words,
+// what it does and why, whatever the lane sends; the question shows both,
+// labelled as the lane's, made safe to show.
+func TestServerAsksTheHeadersWords(t *testing.T) {
+	var asked []Request
+	var mu sync.Mutex
+	s, err := Listen(func(req Request, cancel <-chan struct{}) Response {
+		mu.Lock()
+		asked = append(asked, req)
+		mu.Unlock()
+		return Response{Approved: true, By: "op"}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	tok := s.Register(Caller{Lane: 2, Guards: []string{"DROP"},
+		Texts: map[string]Text{"DROP": {Does: "drop table orders_old (12 rows)", Why: "merged into orders\x1b[2J on 2026-11-02"}}})
+	if r, err := Ask(s.Path(), Request{Lane: 2, Flag: "DROP", Desc: "harmless", Token: tok}, nil, time.Time{}); err != nil || !r.Approved {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if asked[0].Desc != "drop table orders_old (12 rows)" || asked[0].RawDesc != "drop table orders_old (12 rows)" || asked[0].Why != "merged into orders on 2026-11-02" {
+		t.Errorf("request: %+v", asked[0])
+	}
+	q := strings.Join(Question(asked[0]), "\n")
+	contains := "  the lane says:\n    does: drop table orders_old (12 rows)\n    why:  merged into orders on 2026-11-02\n"
+	if !strings.Contains(q, contains) || strings.Contains(q, "harmless") {
+		t.Errorf("question:\n%s", q)
+	}
+}

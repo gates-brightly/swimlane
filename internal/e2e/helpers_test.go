@@ -366,13 +366,14 @@ lith_reset() {
 # Round: modules
 # Includes: lib/lith.sh
 # Guards: L1_ALLOW_RESET  reset the dev db
+#   why: the schema changed under it
 
 source lib/lith.sh
 stage check
 step "x" true
 stage change
 lith_reset main
-if guard L1_ALLOW_RESET "reset the dev db"; then
+if guard L1_ALLOW_RESET; then
   lith_reset main
 fi
 `), 0o755)
@@ -380,7 +381,7 @@ fi
 	contains(t, "modules", out,
 		`lib/lith.sh:5  warn   "rm -r" looks destructive but isn't inside a guard block (in a module lane 1 sources)  [destructive]`,
 		"declare it in the function's comment (# Changes: WHAT)",
-		"lane.1.sh:11   warn   lith_reset changes things: drops the dev database (lib/lith.sh); it isn't inside a guard block  [destructive]",
+		"lane.1.sh:12   warn   lith_reset changes things: drops the dev database (lib/lith.sh); it isn't inside a guard block  [destructive]",
 		"0 errors, 2 warnings")
 	contains(t, "show", r.mustSwim("helpers", "git"), "Changes: a new branch and worktree in the repo")
 }

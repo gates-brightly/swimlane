@@ -843,7 +843,7 @@ func checkDestructive(c *Context, s *Script) []finding.Finding {
 			if what == "" {
 				what = "rm -r"
 			}
-			out = append(out, f(finding.Warn, "destructive", i, "wrap it: if guard FLAG \"<action - date, reason>\"; then ... fi",
+			out = append(out, f(finding.Warn, "destructive", i, "guard it: # Guards: FLAG  <what it does>, #   why: <why>, then if guard FLAG; then ... fi",
 				"%q looks destructive but isn't inside a guard block", strings.ToLower(what)))
 		}
 	}

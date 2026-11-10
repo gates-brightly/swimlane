@@ -254,9 +254,10 @@ func checkShortFormShebang(c *Context, s *Script) []finding.Finding {
 	return nil
 }
 
-// checkGuardText: a guard's description in the script and its # Guards:
-// line say what the operator approves, in the approval prompt and in
-// swim status; they must say the same, and the header must say it.
+// checkGuardText: what a guard does is its # Guards: line's, which the
+// approval prompt and swim status show. The header must say it, and a
+// guard call that says it too (guard FLAG "<text>", the older form)
+// repeats it, or says something else.
 func checkGuardText(c *Context, s *Script) []finding.Finding {
 	if !s.Lib {
 		return nil
@@ -278,15 +279,80 @@ func checkGuardText(c *Context, s *Script) []finding.Finding {
 		if !listed || warned[flag] {
 			continue
 		}
+		warned[flag] = true
 		switch {
 		case hd == "":
-			warned[flag] = true
 			out = append(out, f(finding.Warn, "guard-text", headerAt, fmt.Sprintf("# Guards: %s  %s", flag, desc),
 				"# Guards: lists %s with no description: swim status and the operator see nothing of what it approves", flag))
 		case hd != desc:
-			warned[flag] = true
-			out = append(out, f(finding.Warn, "guard-text", lc.Line, "say the same in both: the header line is what swim status shows",
-				"guard %s says %q here but %q in # Guards:", flag, desc, hd))
+			out = append(out, f(finding.Warn, "guard-text", lc.Line, fmt.Sprintf("write `guard %s`: the prompt shows the header's words", flag),
+				"guard %s says %q here but %q in # Guards:, which is what the operator is asked", flag, desc, hd))
+		default:
+			out = append(out, f(finding.Warn, "guard-text", lc.Line, fmt.Sprintf("write `guard %s` (swim lint --fix does)", flag),
+				"guard %s repeats its # Guards: text; the header alone says what it does", flag))
+		}
+	}
+	return out
+}
+
+// guardLine is the 0-based line of flag's # Guards: line, or -1.
+func (s *Script) guardLine(flag string) int {
+	for i, raw := range s.v.raw {
+		if i >= 200 {
+			break
+		}
+		if k, v, ok := lane.HeaderKey(strings.TrimSpace(raw)); ok && k == "Guards" {
+			if f := strings.Fields(v); len(f) > 0 && f[0] == flag {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// unwritten: a guard's text missing, or still a <placeholder>.
+var unwritten = lane.Unwritten
+
+// checkGuardWhy: every declared guard says why its change is made, on
+// the "#   why:" line under its # Guards: line; the operator reads it
+// with what the guard does before answering.
+func checkGuardWhy(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for _, g := range s.Info.Guards {
+		at := s.guardLine(g.Flag)
+		if at < 0 || !unwritten(g.Why) || unwritten(g.Desc) {
+			continue
+		}
+		out = append(out, f(finding.Warn, "guard-why", at, "add a line under it: #   why: <the reason for the change, with its date>",
+			"guard %s doesn't say why: the operator is asked to approve %q with no reason", g.Flag, g.Desc))
+	}
+	return out
+}
+
+// guardDoesMax is the longest a guard's "does" text should be: one line
+// of the approval prompt.
+const guardDoesMax = 100
+
+// checkGuardDoes: what a guard does is one quick line, the action and its
+// exact target: "cleanup" says neither, and a paragraph isn't read.
+func checkGuardDoes(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for _, g := range s.Info.Guards {
+		at := s.guardLine(g.Flag)
+		desc := strings.Join(strings.Fields(g.Desc), " ")
+		switch {
+		case at < 0:
+		case unwritten(desc):
+			if desc != "" {
+				out = append(out, f(finding.Warn, "guard-does", at, "say the action and its exact target: remove SST stack orders-prod (14 resources)",
+					"guard %s's description is still a placeholder: %s", g.Flag, desc))
+			}
+		case len(strings.Fields(desc)) < 3:
+			out = append(out, f(finding.Warn, "guard-does", at, "say the action and its exact target: remove SST stack orders-prod (14 resources)",
+				"guard %s says only %q: not what it changes, or where", g.Flag, desc))
+		case len(desc) > guardDoesMax:
+			out = append(out, f(finding.Warn, "guard-does", at, "keep it to the action and target; the reason goes on its #   why: line, or split the guard",
+				"guard %s's description is %d characters; the prompt shows one line (%d at most)", g.Flag, len(desc), guardDoesMax))
 		}
 	}
 	return out

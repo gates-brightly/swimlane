@@ -94,6 +94,9 @@ type Request struct {
 	Manifest string `json:"-"`
 	Flag     string `json:"flag"`
 	Desc     string `json:"desc"`
+	// Why is why the guarded change is made (the header's why: line);
+	// the server sets it, with Desc, from the pinned script's header.
+	Why string `json:"why,omitempty"`
 	// Token identifies the lane process (TokenEnv). Op is "" to ask,
 	// "consume" to use up the approval with request id ID, "whoami" to
 	// learn which lane and run the token is for, or "record" to have
@@ -153,6 +156,9 @@ type Caller struct {
 	Run      string
 	Manifest string
 	Guards   []string // the flags its script declares or uses
+	// Texts are what each declared guard does and why, from the pinned
+	// script's header: the question shows them, not what the lane sends.
+	Texts map[string]Text
 	// AnyGuard: its script names a guard's flag at run time (guard "$F"),
 	// so it may ask for a flag Guards doesn't list.
 	AnyGuard bool
@@ -164,6 +170,9 @@ type Caller struct {
 	// Token is the lane process's token (set by Register).
 	Token string
 }
+
+// Text is what a guard does and why it's done.
+type Text struct{ Does, Why string }
 
 // AwaitPID is Caller.PID for a lane process about to start.
 const AwaitPID = -1
@@ -326,7 +335,11 @@ func (s *Server) check(req Request) (Caller, Request, string) {
 	if !ok {
 		return c, req, "the request didn't come from a lane of this run (no or an unknown token)"
 	}
-	req.RawDesc, req.Desc = req.Desc, Clean(req.Desc)
+	if t, ok := c.Texts[req.Flag]; ok && t.Does != "" {
+		// The header's words, pinned: the lane can't change what's asked.
+		req.Desc, req.Why = t.Does, t.Why
+	}
+	req.RawDesc, req.Desc, req.Why = req.Desc, Clean(req.Desc), Clean(req.Why)
 	if req.Lane != c.Lane {
 		req.Desc = fmt.Sprintf("%s (sent as lane %d)", req.Desc, req.Lane)
 	}
@@ -648,7 +661,7 @@ func Whoami(path, token string) (Response, error) {
 // Question is how an approval is put to the operator. The first lines are
 // swim's own facts: the lane and job (the launcher's, under swim run), the
 // guard and the manifest; then what the lane says the
-// guarded step does, labelled as the lane's. Everything the lane supplied
+// guarded step does and why it's done, labelled as the lane's. Everything the lane supplied
 // goes through ui.Safe (Clean): escape sequences, carriage returns,
 // backspaces or bidi controls can't hide or rewrite what the operator
 // approves. (The chain keeps the text as given.)
@@ -666,7 +679,11 @@ func Question(req Request) []string {
 	if len(facts) > 0 {
 		q = append(q, "  "+strings.Join(facts, " · "))
 	}
-	q = append(q, "  the lane says: "+Clean(req.Desc))
+	if req.Why == "" {
+		q = append(q, "  the lane says: "+Clean(req.Desc))
+	} else {
+		q = append(q, "  the lane says:", "    does: "+Clean(req.Desc), "    why:  "+Clean(req.Why))
+	}
 	return append(q, fmt.Sprintf("(or set %s=1 to approve without asking)  Y/N [N]", flag))
 }
 

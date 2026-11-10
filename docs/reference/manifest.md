@@ -27,4 +27,8 @@ hash and the runner binary's path and hash. Not pinned: other binaries on
 
 The header is the lane's contract: swim reads what a lane may do (its
 guards, the files it reads) from the header, never the body, and refuses
-at run time whatever the body does beyond it.
+at run time whatever the body does beyond it. What each guard does and why
+(its `# Guards:` and `#   why:` lines) come from the pinned header too
+(`guard_text`, recorded with the manifest and not hashed apart: the script
+is): they're what the operator is asked, whatever the lane's guard call
+sends.

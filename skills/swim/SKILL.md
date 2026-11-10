@@ -38,12 +38,14 @@ hand a round over, workers, several tasks at once. Follow it.
 2. **Write** `swim new <task> "<goal>"` (the lowest free lane), then the steps (`swim guide lanes`):
 
    ```bash
+   # Guards: ORDERS_ALLOW_DELETE  delete CloudFormation stack orders (account 123456789012)
+   #   why: terraform owns it since 2026-11-05
    stage snapshot
    snapshot "the stack" aws cloudformation describe-stacks --stack-name orders
    stage check
    gate "right account" bash -c '[ "$(aws sts get-caller-identity --query Account --output text)" = 123456789012 ]'
    stage change
-   if guard ORDERS_ALLOW_DELETE "delete stack orders (2026-11-05: tf owns it)"; then
+   if guard ORDERS_ALLOW_DELETE; then
      step "delete" aws cloudformation delete-stack --stack-name orders
    fi
    stage verify
@@ -52,6 +54,10 @@ hand a round over, workers, several tasks at once. Follow it.
 
    `step` records a command; a failed `gate` stops the round; `snapshot`
    also saves its output; `guard` is a dry run until the operator approves.
+   The operator is asked the guard's two header lines: what it does (the
+   action and exact target, one line) and, under it, `why:` (the reason,
+   with its date). Write both so they can say yes without reading the
+   script.
 
    **Check `swim helpers` before writing a check by hand.** It lists the
    helper modules (`aws`, `gh`, `git`, `docker`, `tool`, `os`), one line

@@ -411,7 +411,9 @@ any_failed() {
   [ "$_swim_fail" -gt 0 ]
 }
 
-# guard FLAG "<action — date, reason>" — true if the operator approves:
+# guard FLAG — true if the operator approves what the header says FLAG
+# does and why (# Guards: FLAG  <does>, then #   why: <why>). An older
+# form, guard FLAG "<action>", gives the text in the call.
 # FLAG=1 approves up front (CI, scripts). With FLAG unset and an operator
 # at the terminal, swim asks: "swim N requires human approval of guard
 # FLAG ... the lane says: <action> Y/N [N]"; y approves (recorded with who
@@ -422,13 +424,17 @@ any_failed() {
 # dry-run message showing how to approve, and returns false. One flag per
 # destructive action.
 guard() {
-  if [ $# -lt 2 ]; then
-    echo 'swim: usage: guard FLAG "<action - date, reason>"' >&2
+  if [ $# -lt 1 ]; then
+    echo 'swim: usage: guard FLAG (the header says what it does: # Guards: FLAG  <does>)' >&2
     return 2
   fi
   case "$1" in
     ''|[0-9]*|*[!A-Za-z0-9_]*) echo "swim: bad guard flag name: $1" >&2; return 2 ;;
   esac
+  if [ $# -lt 2 ] || [ -z "$2" ]; then
+    # What the step does is the header's: # Guards: FLAG  <does>.
+    set -- "$1" "$("$SWIM_BIN" _guard_text "$SWIM_LANE" "$1" 2>/dev/null || printf '%s' "$1")"
+  fi
   eval "_swim_val=\${$1-unset}"
   _swim_flag_set=
   if [ "$_swim_val" = "1" ]; then

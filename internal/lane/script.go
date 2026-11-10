@@ -196,20 +196,43 @@ func ShortForm(src string) bool {
 // sideFile is lane.N.yml. Every key is optional; a key that is set wins
 // over the script's header.
 type sideFile struct {
-	Round       *string           `yaml:"round"`
-	RoundID     *string           `yaml:"round-id"`
-	Job         *string           `yaml:"job"` // round-id's old name (an older sidecar)
-	After       *strList          `yaml:"after"`
-	Owner       *string           `yaml:"owner"`
-	Created     *string           `yaml:"created"`
-	Guards      map[string]string `yaml:"guards"`
-	Timeout     *string           `yaml:"timeout"`
-	StepTimeout *string           `yaml:"step-timeout"`
-	Locks       *strList          `yaml:"locks"`
-	Stub        *bool             `yaml:"stub"`
+	Round       *string              `yaml:"round"`
+	RoundID     *string              `yaml:"round-id"`
+	Job         *string              `yaml:"job"` // round-id's old name (an older sidecar)
+	After       *strList             `yaml:"after"`
+	Owner       *string              `yaml:"owner"`
+	Created     *string              `yaml:"created"`
+	Guards      map[string]sideGuard `yaml:"guards"`
+	Timeout     *string              `yaml:"timeout"`
+	StepTimeout *string              `yaml:"step-timeout"`
+	Locks       *strList             `yaml:"locks"`
+	Stub        *bool                `yaml:"stub"`
 	// Fail: hard (script syntax 3).
 	Fail     *string  `yaml:"fail"`
 	Includes *strList `yaml:"includes"`
+}
+
+// sideGuard is a sidecar's guard: what it does, as one string, or
+// {does: ..., why: ...}.
+type sideGuard struct{ Does, Why string }
+
+func (g *sideGuard) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		*g = sideGuard{Does: n.Value}
+		return nil
+	case yaml.MappingNode:
+		var m struct {
+			Does string `yaml:"does"`
+			Why  string `yaml:"why"`
+		}
+		if err := n.Decode(&m); err != nil {
+			return err
+		}
+		*g = sideGuard{Does: m.Does, Why: m.Why}
+		return nil
+	}
+	return fmt.Errorf("line %d: expected what the guard does, or {does: ..., why: ...}", n.Line)
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -326,10 +349,10 @@ func applySidecar(path string, info *Info) error {
 				continue
 			}
 			if i, ok := listed[f]; ok {
-				info.Guards[i].Desc = sf.Guards[f]
+				info.Guards[i].Desc, info.Guards[i].Why = sf.Guards[f].Does, sf.Guards[f].Why
 				continue
 			}
-			front = append(front, Guard{Flag: f, Desc: sf.Guards[f]})
+			front = append(front, Guard{Flag: f, Desc: sf.Guards[f].Does, Why: sf.Guards[f].Why})
 		}
 		info.Guards = append(front, info.Guards...)
 	}

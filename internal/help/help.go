@@ -239,7 +239,9 @@ var Commands = map[string]string{
   With a guard's flag unset and swim on a terminal, the lane asks instead:
     lane 2 requires human approval of guard FIN_ALLOW_DELETE_ZG_ITEMS
       round-id 3f2a9c1e-... · manifest 3be9a1c07d2e
-      the lane says: delete the zg items - 2026-10-12
+      the lane says:
+        does: delete the 41 zg items from fin-prod (snapshot keeps them)
+        why:  the zg import was a test (2026-10-12)
     (or set FIN_ALLOW_DELETE_ZG_ITEMS=1 to approve without asking)  Y/N [N]
   The first lines are swim's own: the lane, round id and manifest the launcher
   started (each lane process has its own approval token), not what the
@@ -337,10 +339,12 @@ var Commands = map[string]string{
   In a lane script in any language: run a read-only step and save its output
   to .swim/snapshots/laneN-<time>-<label>.txt.
 `,
-	"guard": `swim guard FLAG "<action - date, reason>"
+	"guard": `swim guard FLAG
 
-  In a lane script in any language: exit 0 if the operator approves the
-  action, 1 if not. FLAG=1 approves up front; unset, swim asks the
+  In a lane script in any language: exit 0 if the operator approves what
+  the header says FLAG does and why (# Guards: FLAG  <does>, and under it
+  #   why: <why>), 1 if not. (swim guard FLAG "<action>", the older form,
+  gives the text in the call.) FLAG=1 approves up front; unset, swim asks the
   operator; anything else records SKIP as a dry run.
   Under swim run the launcher decides: FLAG=1 counts only if swim run's own
   environment set it (a FLAG=1 the lane sets is a dry run).

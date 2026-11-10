@@ -23,7 +23,10 @@ type Fixed struct {
 	Renamed []int
 	// RoundID: the line (1-based) whose # Job: it rewrote to # Round-ID:.
 	RoundID int
-	Skip    string // why it wasn't changed ("" if it was, or had nothing to add)
+	// Shortened: the lines (1-based) whose guard FLAG "<text>" it rewrote
+	// to guard FLAG, the text being the header's.
+	Shortened []int
+	Skip      string // why it wasn't changed ("" if it was, or had nothing to add)
 }
 
 // Fix adds the header lines a lane's script is missing for what its body
@@ -33,7 +36,8 @@ type Fixed struct {
 // the lane's contract (swim refuses what it doesn't declare); these are
 // lines for a person to review, so it never removes or rewrites one. In a
 // bash lane it also rewrites run, step's old name, to step, and in any
-// lane # Job:, Round-ID's old name, to # Round-ID:. It skips
+// lane # Job:, Round-ID's old name, to # Round-ID:, and drops a guard
+// call's text that only repeats its # Guards: line. It skips
 // running lanes, lanes of jobs (each job declares its own guards)
 // and compiled lanes.
 func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
@@ -77,9 +81,6 @@ func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
 		s := NewScript(n, src)
 		s.Name = fx.File
 		add := missingHeader(root, s)
-		if len(add) == 0 && len(fx.Renamed) == 0 && fx.RoundID == 0 {
-			continue
-		}
 		lines := strings.Split(src, "\n")
 		prefix := "# "
 		if commentStyle(lines) == "//" {
@@ -90,6 +91,18 @@ func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
 		}
 		if len(add) > 0 {
 			lines = slices.Insert(lines, headerEnd(lines), add...)
+		}
+		if s.Lib {
+			// With the header saying it (just added or not), a guard
+			// call's own copy of the text goes.
+			var short []int
+			lines, short = shortenGuards(lines, lane.ParseScript(strings.Join(lines, "\n")))
+			for _, i := range short {
+				fx.Shortened = append(fx.Shortened, i+1)
+			}
+		}
+		if len(add) == 0 && len(fx.Renamed) == 0 && fx.RoundID == 0 && len(fx.Shortened) == 0 {
+			continue
 		}
 		st, err := os.Stat(path)
 		if err != nil {
@@ -118,7 +131,7 @@ func missingHeader(root string, s *Script) []string {
 			if desc == "" {
 				desc = "<what it approves, date, reason>"
 			}
-			add = append(add, fmt.Sprintf("Guards: %s  %s", flag, desc))
+			add = append(add, fmt.Sprintf("Guards: %s  %s", flag, desc), "  why: <why this change is made, with its date>")
 		}
 		if s.Info.DynamicGuards == 0 && len(checkGuardDynamic(nil, s)) > 0 {
 			add = append(add, "Guards: *  flags named at run time (say which, and why)")
@@ -152,6 +165,41 @@ func guardAction(line, flag string) string {
 		}
 	}
 	return ""
+}
+
+// guardCallRE matches a guard call with its text: guard FLAG "<text>"
+// (or '<text>'); 1 is the flag, 2 the quoted text.
+var guardCallRE = regexp.MustCompile(`\bguard\s+([A-Za-z_][A-Za-z0-9_]*)\s+("(?:[^"\\$` + "`" + `]|\\.)*"|'[^']*')`)
+
+// shortenGuards rewrites each guard FLAG "<text>" whose text is what the
+// header says FLAG does to guard FLAG, and returns the lines and the
+// (0-based) ones it changed. Text that differs is left for a person.
+func shortenGuards(lines []string, info lane.Info) ([]string, []int) {
+	header := map[string]string{}
+	for _, g := range info.Guards {
+		if !unwritten(g.Desc) {
+			header[g.Flag] = strings.Join(strings.Fields(g.Desc), " ")
+		}
+	}
+	var changed []int
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "#") {
+			continue
+		}
+		out := guardCallRE.ReplaceAllStringFunc(l, func(m string) string {
+			sub := guardCallRE.FindStringSubmatch(m)
+			text := guardAction(m, sub[1])
+			if hd, ok := header[sub[1]]; !ok || hd != strings.Join(strings.Fields(text), " ") {
+				return m
+			}
+			return "guard " + sub[1]
+		})
+		if out != l {
+			lines[i] = out
+			changed = append(changed, i)
+		}
+	}
+	return lines, changed
 }
 
 // commentStyle is how the script's header comments start: "#", or "//"

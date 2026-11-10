@@ -2,6 +2,7 @@
 # swim: syntax 4
 # Round:  A lane that tries to approve its own guard
 # Guards: USERS_ALLOW_PURGE  delete every row from users
+#   why: the demo resets its table
 #
 # What a confused (or malicious) script might try: set the approval flag
 # itself, then call guard.
@@ -13,7 +14,7 @@ step "rows now" fakecloud rows users
 
 stage change
 export USERS_ALLOW_PURGE=1          # "approve" myself
-if guard USERS_ALLOW_PURGE "delete every row from users"; then
+if guard USERS_ALLOW_PURGE; then
   step "delete everything" fakecloud delete users @
 fi
 summary

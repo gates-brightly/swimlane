@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -37,7 +38,30 @@ func SnapshotDir(root string) string { return filepath.Join(root, ".swim", "snap
 // Guard is a guard flag a round honours.
 type Guard struct {
 	Flag string
-	Desc string // from the header's Guards: line; "" if only found in the body
+	Desc string // what it does, from the header's Guards: line; "" if only found in the body
+	Why  string // why it's done, from the "#   why:" line under it; "" for none
+}
+
+// Unwritten reports whether a guard's text is missing, or still a
+// template's <placeholder>.
+func Unwritten(s string) bool {
+	s = strings.TrimSpace(s)
+	return s == "" || strings.HasPrefix(s, "<") && strings.HasSuffix(s, ">")
+}
+
+// GuardWhy reads a "#   why: <reason>" line, the one under a # Guards:
+// line that says why the guarded change is made: the reason, and whether
+// the line is one.
+func GuardWhy(line string) (string, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(line), "#")
+	if !ok {
+		return "", false
+	}
+	rest = strings.TrimLeft(rest, " \t")
+	if len(rest) < 4 || !strings.EqualFold(rest[:4], "why:") {
+		return "", false
+	}
+	return strings.TrimSpace(rest[4:]), true
 }
 
 // KV is a header key the lane script sets that swim doesn't know.
@@ -171,6 +195,9 @@ func ParseScript(src string) Info {
 	info := Info{Exists: true, Syntax: syntax.OfScript(strings.Join(lines, "\n"))}
 	inBlock := true
 	listed := map[string]bool{}
+	// guardAt is the line of the last # Guards: line (or why: line under
+	// it) read, guardIdx its guard in info.Guards (-1: none, "*").
+	guardAt, guardIdx := -1, -1
 	// In a bash lane, heredoc bodies and the lines of a string over several
 	// lines hold no code: they aren't read for stages.
 	var text []bool
@@ -190,10 +217,24 @@ func ParseScript(src string) Info {
 				info.Stub = true
 				continue
 			}
+			if why, ok := GuardWhy(line); ok && guardAt == i-1 {
+				// Under a # Guards: line: why that guard's change is made.
+				if guardIdx >= 0 && info.Guards[guardIdx].Why == "" {
+					info.Guards[guardIdx].Why = why
+				}
+				guardAt = i
+				continue
+			}
 			key, v, isKey := headerKey(line, false)
 			roundKey, roundVal, _ := headerKey(line, true)
 			isRound := roundKey == "Round"
 			if isKey && info.setHeader(key, v, i+1, listed) {
+				if key == "Guards" {
+					guardAt, guardIdx = i, -1
+					if f := strings.Fields(v); len(f) > 0 {
+						guardIdx = slices.IndexFunc(info.Guards, func(g Guard) bool { return g.Flag == f[0] })
+					}
+				}
 				continue
 			}
 			if inBlock {

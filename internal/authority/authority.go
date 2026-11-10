@@ -132,6 +132,7 @@ func (s *Snapshot) FlagSet(flag string) Result {
 type GuardState struct {
 	Flag     string `yaml:"flag"`
 	Desc     string `yaml:"description,omitempty"`
+	Why      string `yaml:"why,omitempty"` // why the change is made (the header's why: line)
 	Approved bool   `yaml:"approved"`
 	// How it's approved ("FLAG=1").
 	How string `yaml:"how,omitempty"`

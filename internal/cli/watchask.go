@@ -41,6 +41,7 @@ type askMsg struct {
 	Lane     int      `json:"lane,omitempty"`
 	Flag     string   `json:"flag,omitempty"`
 	Desc     string   `json:"desc,omitempty"`
+	Reason   string   `json:"reason,omitempty"` // why the guarded change is made
 	Question []string `json:"question,omitempty"`
 	Approved bool     `json:"approved,omitempty"`
 	By       string   `json:"by,omitempty"`
@@ -117,7 +118,7 @@ func (c *askClient) ask(req approval.Request, cancel <-chan struct{}) approval.R
 	c.next++
 	id := c.next
 	c.waiting[id] = ch
-	err := c.enc.Encode(askMsg{Op: "ask", ID: id, Lane: req.Lane, Flag: req.Flag, Desc: req.Desc, Question: q})
+	err := c.enc.Encode(askMsg{Op: "ask", ID: id, Lane: req.Lane, Flag: req.Flag, Desc: req.Desc, Reason: req.Why, Question: q})
 	c.mu.Unlock()
 	if err != nil {
 		return approval.Response{Dry: true, Why: askGone + ": " + err.Error()}

@@ -347,6 +347,10 @@ func (t *tui) banner() string {
 				s += " · " + task
 				break
 			}
+			if task, ok := strings.CutPrefix(strings.TrimSpace(l), "does: "); ok {
+				s += " · " + task
+				break
+			}
 		}
 		return s
 	}

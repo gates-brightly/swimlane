@@ -126,7 +126,11 @@ type Manifest struct {
 	// lane may ask for under any name).
 	Guards        []string `yaml:"guards,omitempty"`
 	DynamicGuards bool     `yaml:"dynamic_guards,omitempty"`
-	SHA256        string   `yaml:"manifest_sha256"`
+	// GuardText is what each declared guard does and why, from the pinned
+	// script's header: what the operator is asked, whatever the lane's
+	// guard call says. Not hashed: the script it comes from is.
+	GuardText map[string]GuardText `yaml:"guard_text,omitempty"`
+	SHA256    string               `yaml:"manifest_sha256"`
 
 	// Dir is where the manifest is staged ("" before Stage).
 	Dir  string            `yaml:"-"`
@@ -214,9 +218,27 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	// declares, and any at all with "# Guards: *": a guard the body uses
 	// without declaring it is refused when it asks.
 	m.DynamicGuards = info.DynamicGuards > 0 || lane.ParseScript(string(data)).DynamicGuards > 0
+	for _, g := range info.Guards {
+		// A <placeholder> says nothing: the lane's own text is asked.
+		if t := (GuardText{Does: g.Desc, Why: g.Why}); !lane.Unwritten(t.Does) {
+			if lane.Unwritten(t.Why) {
+				t.Why = ""
+			}
+			if m.GuardText == nil {
+				m.GuardText = map[string]GuardText{}
+			}
+			m.GuardText[g.Flag] = t
+		}
+	}
 	sort.Strings(m.Guards)
 	m.SHA256 = m.Pinned.Hash(n)
 	return m, nil
+}
+
+// GuardText is what a guard does and why it's done, as its header says.
+type GuardText struct {
+	Does string `yaml:"does,omitempty"`
+	Why  string `yaml:"why,omitempty"`
 }
 
 // noPolicy is the config part every manifest pins now: the policy hash of

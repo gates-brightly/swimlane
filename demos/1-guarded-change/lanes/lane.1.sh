@@ -3,6 +3,7 @@
 # Round:  Purge test accounts from the prod users table
 # Owner:  planner (AI session)
 # Guards: USERS_ALLOW_PURGE  delete the @test.example rows from users
+#   why: load-test leftovers
 #
 # Goal: the signup load test left accounts behind in prod. Delete them, and
 # only them. Everything before `stage change` is read-only.
@@ -17,7 +18,7 @@ gate "users table exists" fakecloud rows users
 step  "test accounts to delete" fakecloud select users @test.example
 
 stage change
-if guard USERS_ALLOW_PURGE "delete the @test.example rows from users"; then
+if guard USERS_ALLOW_PURGE; then
   step "delete test accounts" fakecloud delete users @test.example
 fi
 

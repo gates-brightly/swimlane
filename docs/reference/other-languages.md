@@ -24,21 +24,22 @@ and exports `SWIM_LANE`, `SWIM_ROUND_ID`, `SWIM_RUN`, `STEP_LOG` and the rest:
 ```python
 #!/usr/bin/env python3
 # Round:  Rotate the orders bucket
-# Guards: ORDERS_ALLOW_DELETE  delete the old bucket (2026-10-13: replaced)
+# Guards: ORDERS_ALLOW_DELETE  delete the old bucket s3://orders
+#   why: orders-v2 replaced it (2026-10-13)
 import os, subprocess
 def swim(*a): return subprocess.run([os.environ.get("SWIM_BIN", "swim"), *a]).returncode
 
 swim("stage", "check")
 swim("gate", "new bucket exists", "--", "aws", "s3api", "head-bucket", "--bucket", "orders-v2")
 swim("stage", "change")
-if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: replaced)") == 0:
+if swim("guard", "ORDERS_ALLOW_DELETE") == 0:
     swim("step", "delete old bucket", "--", "aws", "s3", "rb", "s3://orders")
 ```
 
 | | |
 |---|---|
 | `swim step\|gate\|snapshot [opts] "<label>" -- cmd` | Steps, with the [step options](lanes.md#functions). |
-| `swim guard FLAG "<action>"` | Exit 0 approved, 1 a dry run. |
+| `swim guard FLAG` | Exit 0 approved, 1 a dry run; what it does and why come from the header (`// Guards: FLAG  <does>`, then `//   why: <why>`), or `guards: {FLAG: {does: ..., why: ...}}` in `lane.N.yml`. |
 | `swim stage NAME` | As in bash. |
 
 - A failed gate, a bad stage, a blocked command or Ctrl-C ends the program

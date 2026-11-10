@@ -84,12 +84,13 @@ cat > lane.2.sh <<'EOF'
 # swim: syntax 4
 # Round: Delete the .tmp files
 # Guards: TRY_ALLOW_DELETE  delete the .tmp files
+#   why: they're left over from the quickstart
 
 stage snapshot
 snapshot "the .tmp files" bash -c 'ls "$SWIM_ROOT"/*.tmp'
 
 stage change
-if guard TRY_ALLOW_DELETE "delete the .tmp files"; then
+if guard TRY_ALLOW_DELETE; then
   step "delete them" bash -c 'rm -v "$SWIM_ROOT"/*.tmp'
 fi
 EOF
