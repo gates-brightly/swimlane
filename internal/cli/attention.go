@@ -109,7 +109,7 @@ func cmdAttention() error {
 			running = append(running, attentionItem{who, stateWord(l, state, now), ""})
 			continue
 		case current && state == status.Failed:
-			needs = append(needs, attentionItem{who, stateWord(l, state, now) + " · " + l.Round, "swim log " + strconv.Itoa(l.Lane)})
+			needs = append(needs, attentionItem{who, stateWord(l, state, now) + " · " + l.Round, "swim log " + strconv.Itoa(l.Lane) + " --failed"})
 			if len(l.FailedSteps) > 0 { // the first failed step and its why, on a line of its own
 				first := strings.TrimSpace(l.FailedSteps[0])
 				if more := len(l.FailedSteps) - 1; more > 0 {

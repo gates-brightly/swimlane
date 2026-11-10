@@ -24,6 +24,7 @@ type ResultDoc struct {
 	Saved    string   `yaml:"saved,omitempty" json:"saved,omitempty"`
 	Why      string   `yaml:"why,omitempty" json:"why,omitempty"`       // a failed step's most telling output line
 	Helper   string   `yaml:"helper,omitempty" json:"helper,omitempty"` // the swim helpers function that ran it, its file and how that stands
+	Before   string   `yaml:"before,omitempty" json:"before,omitempty"` // swim log --failed: the label of the result just before it
 }
 
 // Counts are a round's result totals.

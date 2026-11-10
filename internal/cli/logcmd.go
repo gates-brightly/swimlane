@@ -23,18 +23,21 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
+// swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow] [--failed]
 // swim log --since <1h|TIME|RUN|ROUND-ID>
 func cmdLog(args []string) error {
-	var all, full, raw, asYAML, follow bool
+	var all, full, raw, asYAML, follow, failed bool
 	var since string
 	rest, err := flags{bools: map[string]*bool{"all": &all, "full": &full, "raw": &raw, "yaml": &asYAML,
-		"follow": &follow}, strs: map[string]*string{"since": &since}}.parse(args)
+		"follow": &follow, "failed": &failed}, strs: map[string]*string{"since": &since}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow]\n       swim log --since <1h|TIME|RUN|ROUND-ID>")
+		return usagef("usage: swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow] [--failed]\n       swim log --since <1h|TIME|RUN|ROUND-ID>")
+	}
+	if failed && (len(rest) == 0 || follow) {
+		return usagef("--failed takes a lane or round id, and no --follow: swim log N --failed")
 	}
 	if since != "" && len(rest) > 0 {
 		return usagef("--since reads the project log: swim log --since %s (swim log %s is all of it)", since, rest[0])
@@ -54,6 +57,8 @@ func cmdLog(args []string) error {
 	// (logparse.FoldRepeats); --raw is the file exactly, as cat shows it,
 	// and --full keeps every output line.
 	render := ui.ColorEnabled(os.Stdout) && !raw
+	// --failed shows a failed step's output in full: that's what a fix needs.
+	full = full || failed
 	out := logWriter{w: os.Stdout, p: ui.Painter{On: render}, full: full, fold: !raw && !full && !follow, ref: strings.Join(rest, "")}
 
 	if len(rest) == 0 {
@@ -95,7 +100,7 @@ func cmdLog(args []string) error {
 			}
 			return errors.New(msg)
 		}
-		if asYAML {
+		if asYAML || failed {
 			// The latest round, or with --all every round, as data.
 			var rounds [][]string
 			for _, f := range files {
@@ -109,7 +114,10 @@ func cmdLog(args []string) error {
 				rounds = rounds[len(rounds)-1:]
 			}
 			sp, why := inFlight(root, n)
-			return writeDocs(os.Stdout, n, rounds, sp, why)
+			if !asYAML {
+				return out.failed(n, rounds)
+			}
+			return writeDocs(os.Stdout, n, rounds, sp, why, failed)
 		}
 		for _, f := range files {
 			if err := out.file(f, len(files) > 1); err != nil {
@@ -150,12 +158,18 @@ func cmdLog(args []string) error {
 				}
 			}
 			if asYAML {
-				if err := writeDocs(os.Stdout, n, rounds, sp, why); err != nil {
+				if err := writeDocs(os.Stdout, n, rounds, sp, why, failed); err != nil {
 					return err
 				}
 				continue
 			}
 			out.header(f)
+			if failed {
+				if err := out.failed(n, rounds); err != nil {
+					return err
+				}
+				continue
+			}
 			for _, r := range rounds {
 				out.lines(r)
 			}
@@ -331,8 +345,9 @@ func splitRounds(path string) ([][]string, error) {
 }
 
 // writeDocs prints rounds as YAML documents (swim log --yaml).
-// The last round gets sp, the step running now, as a RUNNING result.
-func writeDocs(w io.Writer, n int, rounds [][]string, sp *step.Spool, why string) error {
+// The last round gets sp, the step running now, as a RUNNING result. With
+// failed (--failed), each keeps only its failed results.
+func writeDocs(w io.Writer, n int, rounds [][]string, sp *step.Spool, why string, failed bool) error {
 	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)
 	for i, lines := range rounds {
@@ -349,6 +364,9 @@ func writeDocs(w io.Writer, n int, rounds [][]string, sp *step.Spool, why string
 			}
 			d.Results = append(d.Results, logparse.ResultDoc{Result: step.Running, Label: sp.Label, Detail: why,
 				Stage: r.Stage, Step: true, Duration: &dur, Clock: sp.Clock, Command: sp.Cmd, Output: output})
+		}
+		if failed {
+			d = failedOnly(d)
 		}
 		if err := enc.Encode(d); err != nil {
 			return err

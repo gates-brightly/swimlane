@@ -394,7 +394,7 @@ swim archive --passed ["<note>"]
   --lane N|ROUND-ID   tie the note to a lane (and its round id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
+	"log": `swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow] [--failed]
 swim log --since <1h|TIME|RUN|ROUND-ID>
 
   Print logs:
@@ -410,6 +410,13 @@ swim log --since <1h|TIME|RUN|ROUND-ID>
     swim log ROUND-ID   just that round (full id or 8+ characters),
                         from whichever current or archived log holds them
     swim log RUN        every lane's round from that swim run, in lane order
+    swim log N --failed only what a fix needs from the latest round: its header,
+                        each step that failed, stopped or drifted with its
+                        command and output in full, the stage it was in and
+                        the step before it, then the END lines; passing steps
+                        are counted, not shown. "no failed steps" (exit 0) if
+                        none did. With --yaml, only the failed results, each
+                        with the step before it (before:)
   On a terminal the log is rendered: round and stage headers stand out,
   results are coloured, times show how far into the round they were, and
   step output longer than 40 lines is folded to its first and last 15.

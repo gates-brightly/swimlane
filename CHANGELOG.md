@@ -43,6 +43,7 @@ history stays here, since `swim changelog --since` reads it.
 - A guard says what it does and why: `# Guards: FLAG  <does>`, then `#   why: <reason, date>` under it; the approval asks both.
 - `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy). `guard FLAG "<text>"` goes in the first release on or after 2026-12-01.
 - `swim archive` refuses a committed lane instead of stubbing it; no swim writes stubs any more.
+- `swim log N --failed`: just the failed steps of the round, output in full; bare `swim` points at it.
 - `run`, step's old name, is gone: a lane that still calls it fails ("run: command not found").
 
 ### Changed
@@ -75,6 +76,14 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Added
 
+- **`swim log N --failed`:** only what a fix needs from the latest round
+  (or a round id's): its header, each step that failed, stopped or
+  drifted with its command and output in full (never folded), the stage
+  it was in and one line for the step before it, then the END lines.
+  Passing steps are counted, not shown; a round with none failed says
+  `no failed steps` and exits 0. `--failed --yaml` keeps only the failed
+  results, each with `before:` (swim.log/v1 gains the field). Bare `swim`
+  points a failed lane at it (`→ swim log 2 --failed`).
 - **Why a guard is there:** a `#   why: <reason>` line right under a
   `# Guards: FLAG  <what it does>` line says why the change is made. The
   approval prompt, `swim watch`, its notifications (and the phone's) and
