@@ -242,7 +242,7 @@ func TestDoctorOldSwimLock(t *testing.T) {
 	}
 	write()
 	out, _ := r.swim("doctor")
-	contains(t, "doctor", out, ".swim.lock", "written by swim 0.20261105.4", "swim doctor --fix (deletes it)")
+	contains(t, "doctor", out, ".swim.lock", "it was written by swim 0.20261105.4. If it comes back, an old swim is still running here", "swim doctor --fix (deletes it)")
 	r.swim("doctor", "--fix")
 	if _, err := os.Stat(filepath.Join(r.root, ".swim.lock")); !os.IsNotExist(err) {
 		t.Errorf("doctor --fix left an untracked .swim.lock: %v", err)

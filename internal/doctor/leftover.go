@@ -83,8 +83,9 @@ func checkLeftover(o *Options) []finding.Finding {
 }
 
 // oldLock is the repo-root file swim before v0.20261105.5 wrote (swim init,
-// swim lock) and asked you to commit. Only an older swim writes it now, so
-// finding it again means one still runs here: it names its version.
+// swim lock) and asked you to commit. Only an older swim writes it now:
+// the finding names the version that wrote it, and says that one coming
+// back means such a swim still runs here (the file may just be old).
 const oldLock = ".swim.lock"
 
 // checkOldLock finds .swim.lock. --fix deletes an untracked one; a tracked
@@ -96,7 +97,7 @@ func checkOldLock(o *Options) []finding.Finding {
 	if err != nil {
 		return nil
 	}
-	by := "an older swim"
+	by := "a swim older than v0.20261105.5"
 	var v struct {
 		Version string `yaml:"version"`
 	}
@@ -109,8 +110,8 @@ func checkOldLock(o *Options) []finding.Finding {
 	} else if tracked {
 		fix = "git rm " + oldLock + " (swim never writes to git)"
 	}
-	return []finding.Finding{fd(finding.Warn, "leftover", oldLock, fix+"; then update the swim that wrote it",
-		"swim no longer reads it (written by %s: a swim that old still runs here)", by)}
+	return []finding.Finding{fd(finding.Warn, "leftover", oldLock, fix,
+		"swim no longer reads it; it was written by %s. If it comes back, an old swim is still running here", by)}
 }
 
 func checkExpiredClaims(o *Options) []finding.Finding {

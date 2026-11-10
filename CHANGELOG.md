@@ -71,7 +71,8 @@ history stays here, since `swim changelog --since` reads it.
   delete a committed lane's script or stub.
 - **`swim doctor` finds a `.swim.lock`:** only a swim older than
   v0.20261105.5 writes one now, so the warning (`leftover`) names the
-  version that wrote it: that swim still runs here and wants updating.
+  version that wrote it; if the file comes back after you remove it, an
+  old swim is still running here.
   `--fix` deletes an untracked one; for a committed one it says `git rm`.
 - **The archive note lives in `.swim.log` only:** status.yml no longer
   keeps a copy (`last_note`). `swim status` and `swim status --yaml`
