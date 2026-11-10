@@ -1,7 +1,8 @@
 package e2e
 
-// The security regression suite (dev/tasks.md T25): the audit's checklist, one
-// subtest per case. A case asserts what swim does today.
+// The security regression suite: the audit's checklist, one subtest per
+// case. A case asserts what swim does today; a known gap skips with
+// "gap: <what swim doesn't do yet>" (CONTRIBUTING.md).
 
 import (
 	"os"
@@ -99,12 +100,11 @@ func (b *boundary) noMarker(t *testing.T, why string) {
 
 func TestSecurity(t *testing.T) {
 	cases := []struct {
-		name   string
-		closes string // the task(s) whose guarantee this case checks
-		run    func(t *testing.T)
+		name string
+		run  func(t *testing.T)
 	}{
 		// The execution-boundary fixture: from guard to process launch.
-		{"no approval and no terminal: not run", "T25", func(t *testing.T) {
+		{"no approval and no terminal: not run", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			c := b.cmd(bin, "run", "1", "--plain")
 			c.SysProcAttr = noTTY()
@@ -115,13 +115,13 @@ func TestSecurity(t *testing.T) {
 				t.Errorf("prompted without a terminal:\n%s", out)
 			}
 		}},
-		{"declined at the prompt: not run", "T25", func(t *testing.T) {
+		{"declined at the prompt: not run", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			b.runLane(1, newBroker(t, func(approval.Request, <-chan struct{}) bool { return false }))
 			b.noMarker(t, "declined")
 			contains(t, "lane1.log", b.log(1), "SKIP  drop table orders (dry run: declined at the prompt by tester")
 		}},
-		{"stopped while waiting for approval: not run", "T25", func(t *testing.T) {
+		{"stopped while waiting for approval: not run", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			br := newBroker(t, func(_ approval.Request, cancel <-chan struct{}) bool { <-cancel; return true })
 			c := b.cmd("bash", "lane.1.sh")
@@ -143,7 +143,7 @@ func TestSecurity(t *testing.T) {
 			b.noMarker(t, "stopped")
 			contains(t, "lane1.log", b.log(1), "not approved: the lane is stopping")
 		}},
-		{"past the round's Timeout while waiting: not run", "T25", func(t *testing.T) {
+		{"past the round's Timeout while waiting: not run", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			withHeader(t, b.repo, 1, "# Timeout: "+dur(2*time.Second))
 			// A broker that would approve, but only after the deadline.
@@ -158,7 +158,7 @@ func TestSecurity(t *testing.T) {
 			b.noMarker(t, "timed out")
 			contains(t, "lane1.log", b.log(1), "SKIP  drop table orders (dry run: not approved: the round's Timeout ran out")
 		}},
-		{"the chain's last entry names the script, approval and outcome", "T25", func(t *testing.T) {
+		{"the chain's last entry names the script, approval and outcome", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			b.env = append(b.env, boundaryGuard+"=1")
 			b.mustSwim("run", "1", "--plain")
@@ -188,7 +188,7 @@ func TestSecurity(t *testing.T) {
 			}
 			contains(t, "verify", b.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 		}},
-		{"a command run without guard has no approval in the chain", "T4", func(t *testing.T) {
+		{"a command run without guard has no approval in the chain", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			b.script(2, "unguarded", `step "drop" touch "`+b.marker+`"`)
 			b.mustSwim("run", "2", "--plain")
@@ -214,7 +214,7 @@ func TestSecurity(t *testing.T) {
 				t.Error("no round entry for lane 2")
 			}
 		}},
-		{"a planted secret never appears in the log, .swim.log or status", "T9", func(t *testing.T) {
+		{"a planted secret never appears in the log, .swim.log or status", func(t *testing.T) {
 			r := newRepo(t)
 			r.env = append(r.env, "DB_PASSWORD=planted-s3cret-value")
 			r.script(1, "uses a secret", `DB=$DB_PASSWORD
@@ -233,10 +233,10 @@ step "fail with it" bash -c "echo $DB; exit 3"`)
 			}
 			contains(t, "lane1.log", r.log(1), "db=***")
 		}},
-		{"a planted secret in every file swim writes", "T9", TestNoSecretLeaks},
+		{"a planted secret in every file swim writes", TestNoSecretLeaks},
 
 		// A hostile lane (T3, T10): authority_test.go.
-		{"a guard with a misleading description: the prompt shows the true lane", "T3", func(t *testing.T) {
+		{"a guard with a misleading description: the prompt shows the true lane", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			// Lane 1 asks as lane 2, with a description that pretends to be
 			// swim's own question and tries to redraw the line.
@@ -259,28 +259,28 @@ step "fail with it" bash -c "echo $DB; exit 3"`)
 			}
 			b.noMarker(t, "declined")
 		}},
-		{"a guard request with the wrong job id: the chain names the true lane", "T3", TestHostileLaneWrongJob},
-		{"an approval response replayed from another lane is refused", "T3, T10", TestManifestResponseReuse},
-		{"_mark and _finish for another lane are refused", "T3, T10", TestLaneCantReportForAnother},
-		{"a hostile lane at the broker: concurrent requests, disconnects, oversized messages", "T3", TestBrokerHostileClients},
-		{"a lane that calls _mark APPROVED itself", "T3", TestHostileLaneMarksApproved},
-		{"a lane that sets FLAG=1 in its own environment", "T3", TestHostileLaneSetsFlag},
-		{"a lane that drops its approvals channel and sets the flag", "T28", TestHostileLaneDropsApprovals},
-		{"swim run can't start its approvals: every guard is a dry run, attested", "T28", TestApprovalsUnavailable},
-		{"an included file changed between approval and exec", "T2", TestManifestApprovalBinding},
-		{"the runner changed between approval and exec", "T2", TestManifestRunnerBinding},
-		{"the env changed between approval and exec", "T2", TestEnvFileQueuePin},
-		{"a chain record over 256 KiB, then another append", "T24", TestChainLargeEntryAndRepair},
-		{"a worker killed mid-step: no false success, no silent re-run", "T6", TestReapDeadLane},
-		{"a worker killed mid-chain-append: the chain is repairable", "T7", TestFaultChainMidAppend},
-		{"a worker killed after a step's command exited: no false success, no silent re-run", "T7", TestFaultStepAfterExit},
-		{"a worker killed mid-claim or mid-batch: the claim is orphaned, never rerun on its own", "T7", func(t *testing.T) {
+		{"a guard request with the wrong job id: the chain names the true lane", TestHostileLaneWrongJob},
+		{"an approval response replayed from another lane is refused", TestManifestResponseReuse},
+		{"_mark and _finish for another lane are refused", TestLaneCantReportForAnother},
+		{"a hostile lane at the broker: concurrent requests, disconnects, oversized messages", TestBrokerHostileClients},
+		{"a lane that calls _mark APPROVED itself", TestHostileLaneMarksApproved},
+		{"a lane that sets FLAG=1 in its own environment", TestHostileLaneSetsFlag},
+		{"a lane that drops its approvals channel and sets the flag", TestHostileLaneDropsApprovals},
+		{"swim run can't start its approvals: every guard is a dry run, attested", TestApprovalsUnavailable},
+		{"an included file changed between approval and exec", TestManifestApprovalBinding},
+		{"the runner changed between approval and exec", TestManifestRunnerBinding},
+		{"the env changed between approval and exec", TestEnvFileQueuePin},
+		{"a chain record over 256 KiB, then another append", TestChainLargeEntryAndRepair},
+		{"a worker killed mid-step: no false success, no silent re-run", TestReapDeadLane},
+		{"a worker killed mid-chain-append: the chain is repairable", TestFaultChainMidAppend},
+		{"a worker killed after a step's command exited: no false success, no silent re-run", TestFaultStepAfterExit},
+		{"a worker killed mid-claim or mid-batch: the claim is orphaned, never rerun on its own", func(t *testing.T) {
 			t.Run("mid-claim", TestFaultQueueClaimed)
 			t.Run("mid-batch", TestFaultWatchMidBatch)
 		}},
-		{"escape sequences in a guard description are shown escaped", "T26", TestUntrustedTextIsSafe},
-		{"a guard approved by its flag is loud: swim status names it", "T5", TestFlagApproved},
-		{"guards approved without a prompt are in the CI summary and a warning annotation", "T5", TestCIGitHub},
+		{"escape sequences in a guard description are shown escaped", TestUntrustedTextIsSafe},
+		{"a guard approved by its flag is loud: swim status names it", TestFlagApproved},
+		{"guards approved without a prompt are in the CI summary and a warning annotation", TestCIGitHub},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
