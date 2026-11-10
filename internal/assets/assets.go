@@ -21,9 +21,6 @@ var Gitignore string
 //go:embed lane.tmpl.sh
 var laneTmpl string
 
-//go:embed stub.tmpl.sh
-var stubTmpl string
-
 // LibFor returns the lane script library with SWIM_BIN pointing at bin unless
 // the environment already set it.
 func LibFor(bin string) string {
@@ -41,11 +38,6 @@ func Script(lane int, goal, toolchain, job, owner string) (string, error) {
 		"Toolchain": strings.TrimSpace(toolchain),
 		"Date":      time.Now().Format("2006-01-02"),
 	})
-}
-
-// Stub renders a "nothing ready" placeholder.
-func Stub(lane int, message string) (string, error) {
-	return render(stubTmpl, map[string]any{"Lane": lane, "Message": shellSafe(oneLine(message))})
 }
 
 func render(t string, data any) (string, error) {

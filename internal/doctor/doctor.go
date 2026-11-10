@@ -115,7 +115,7 @@ var Checks = []Check{
 	{"claim-expired", true, "a lane claim (.swim/claims/) past its lease", checkExpiredClaims},
 	{"watch-gone", true, "a swim watch presence file (.swim/workers/) whose process is gone, or whose heartbeat stopped", checkWatchGone},
 	{"leftover", true, "a file under .swim/ that swim no longer reads (hub.yml, headless.*, groups/, observations/, out/, checkpoints/, earmarks/, ...)", checkLeftover},
-	{"stub", true, "a lane.N.sh stub an older swim archive left (untracked, not running)", checkStubs},
+	{"stub", true, "a lane.N.sh stub an older swim archive left (--fix deletes an untracked one)", checkStubs},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than 14 days, of no lane's latest round", checkOldStages},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 }

@@ -29,6 +29,26 @@ without letting it run that work.**
   queue and status files, or CI.
 - **swim itself never writes to git**; a lane may, behind a guard.
 
+## Who it's for
+
+swim is an opinionated tool, built to make its maintainer's own loop
+with AI agents faster, safer and cheaper in tokens. Changes are judged by
+that, not by how approachable they make swim:
+
+- **What isn't used goes,** measured from real use (`.swim.log`,
+  sessions), rather than kept for generality. Removals are routine; the
+  CHANGELOG says what to change.
+- **One way to do each thing, and one word for it.**
+- **Features others might want are declined,** or built outside swim, as
+  issue intake is.
+- **A new engineer still gets a tested first five minutes** (the README)
+  and four ideas: lane, round, guard, log.
+- **The shipped skill stays generic;** one person's own setup goes in
+  their own agent instructions, not the repo.
+
+The design decisions behind swim, and what they rejected, are recorded
+in the repo's `docs/adr/`.
+
 ## Compared
 
 | | swim does differently |

@@ -42,6 +42,23 @@ history stays here, since `swim changelog --since` reads it.
 
 - A guard says what it does and why: `# Guards: FLAG  <does>`, then `#   why: <reason, date>` under it; the approval asks both.
 - `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy).
+- `swim archive` refuses a committed lane instead of stubbing it; no swim writes stubs any more.
+
+### Changed
+
+- **`swim archive` refuses a committed lane** (git tracks its script, as
+  a repo's CI lanes): "lane 1 is committed: archive is for working
+  lanes". `--passed` leaves committed lanes out. swim no longer writes
+  stubs at all; `swim doctor` names one an older swim left, and `--fix`
+  deletes it unless git tracks it (then it says `git rm`).
+- **`guard-does` no longer counts words:** "write hello.txt" is a fine
+  description. It still warns on a placeholder, or a line over 100
+  characters.
+- **`swim lint --fix` drops a guard call's text only from a call it
+  parses as one:** never from a heredoc's body, a string over several
+  lines, a comment, or a line a `\` continues.
+- **`guard-why` also warns on a `why:` line under no `# Guards:` line,**
+  which swim reads nothing from.
 
 ### Added
 

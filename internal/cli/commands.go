@@ -782,8 +782,8 @@ func cmdLib(args []string) error {
 // N|ROUND-ID ... ["<note>"] [--as NAME] [--force], or swim archive
 // --passed ["<note>"].
 // Each lane's log becomes laneN.prev-<NAME>.log (with no name, its
-// round's job id) and its script is removed (one git tracks becomes a stub
-// carrying the note): the slot is empty. A script edited since its round ran holds new work: it's kept.
+// round's job id) and its script is removed: the slot is empty. A
+// committed lane (git tracks its script) isn't archived. A script edited since its round ran holds new work: it's kept.
 // --passed does it for every lane whose round passed. Arguments after the
 // lanes that are neither a lane number nor a job id are the note.
 func cmdArchive(args []string) error {
@@ -809,7 +809,8 @@ func cmdArchive(args []string) error {
 		}
 		if st, _ := status.Load(root); st != nil {
 			for _, l := range st.Lanes {
-				if l.State == status.Passed && cfg.IsActive(l.Lane) {
+				// A committed lane passes every run: it isn't archived.
+				if l.State == status.Passed && cfg.IsActive(l.Lane) && !lane.Tracked(root, lane.Script(root, l.Lane)) {
 					lanes = append(lanes, l.Lane)
 				}
 			}
@@ -849,6 +850,10 @@ func cmdArchive(args []string) error {
 			problems = append(problems, strings.Split(err.Error(), "\n")[0])
 			continue
 		}
+		if p := lane.Script(root, n); lane.Tracked(root, p) {
+			problems = append(problems, fmt.Sprintf("lane %d is committed (git tracks %s): archive is for working lanes, and its next run replaces its log", n, filepath.Base(p)))
+			continue
+		}
 		what := as
 		if what == "" {
 			// Default to the job id of the round being archived.
@@ -874,31 +879,21 @@ func cmdArchive(args []string) error {
 	}
 	st, _ := status.Load(root)
 	for _, pl := range plans {
-		// The script is the round that ran (not edited since): stub it.
+		// The script is the round that ran (not edited since): it goes,
+		// and the slot is empty. The chain keeps a copy by hash; the note
+		// lives on in the status entry and the history.
 		var ran *status.Lane
 		if st != nil {
 			ran = st.Get(pl.n)
 		}
-		stub, kept := stubScript(root, pl.n, ran)
+		remove, kept := removableScript(root, pl.n, ran)
 		replaced, _ := lane.ReadScript(root, pl.n)
 		dst, err := lane.Archive(root, pl.n, pl.what)
 		if err != nil {
 			return err
 		}
-		if stub {
-			// The slot empties: the script goes (the note lives on in the
-			// status entry and the history). One git tracks, a committed CI
-			// lane, becomes a stub instead, so no deletion gets committed.
-			if path := lane.Script(root, pl.n); lane.Tracked(root, path) {
-				content, err := assets.Stub(pl.n, or(note, "archived as "+filepath.Base(dst)))
-				if err != nil {
-					return err
-				}
-				err = lane.WriteScript(root, pl.n, content, true)
-				if err != nil {
-					return err
-				}
-			} else if err := lane.RemoveScript(root, pl.n); err != nil {
+		if remove {
+			if err := lane.RemoveScript(root, pl.n); err != nil {
 				return err
 			}
 		}
@@ -906,7 +901,7 @@ func cmdArchive(args []string) error {
 			l.ResetRun()
 			l.State, l.Round, l.Job = status.Empty, "", ""
 			l.LastArchive, l.LastNote = filepath.Base(dst), note
-			if stub {
+			if remove {
 				l.Pending, l.PendingJob = "", ""
 			}
 			l.Rest()
@@ -934,10 +929,11 @@ func claimBroken(root string, n int, broke *lane.Claim, by, via string) {
 	history.Log(root, history.Entry{Event: history.ClaimBroken, Lane: n, Job: broke.Job, Detail: fmt.Sprintf("from=%s by=%s via=%s", broke.Session, by, via)})
 }
 
-// stubScript says whether swim archive stubs lane n's script, or why it
-// keeps it: no script is nothing to stub, and one edited since its last
-// round ran (ran: its status entry) is new work. A stub is restubbed.
-func stubScript(root string, n int, ran *status.Lane) (bool, string) {
+// removableScript says whether swim archive removes lane n's script, or
+// why it keeps it: no script is nothing to remove, and one edited since
+// its last round ran (ran: its status entry) is new work. An older swim's
+// stub goes.
+func removableScript(root string, n int, ran *status.Lane) (bool, string) {
 	info, err := lane.ReadScript(root, n)
 	switch {
 	case err != nil || !info.Exists:

@@ -39,7 +39,5 @@ func TestTemplatesRenderAndParse(t *testing.T) {
 		t.Errorf("the template lacks the goal or job:\n%s", src)
 	}
 	check("lane.3.sh", src, "bash", "-n")
-	stub, _ := Stub(2, `done "for now" $HOME`)
-	check("stub.sh", stub, "bash", "-n")
 	check("lib.sh", LibFor("/usr/local/bin/swim"), "bash", "-n")
 }

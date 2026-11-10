@@ -315,9 +315,27 @@ var unwritten = lane.Unwritten
 
 // checkGuardWhy: every declared guard says why its change is made, on
 // the "#   why:" line under its # Guards: line; the operator reads it
-// with what the guard does before answering.
+// with what the guard does before answering. A why: line anywhere else in
+// the header belongs to no guard: swim reads nothing from it.
 func checkGuardWhy(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
+	under := false // the line before was a # Guards: line
+	for i, raw := range s.v.raw {
+		line := strings.TrimSpace(raw)
+		if i >= 200 || line != "" && !strings.HasPrefix(line, "#") {
+			break // the header is the comments at the top
+		}
+		if _, ok := lane.GuardWhy(line); ok {
+			if !under {
+				out = append(out, f(finding.Warn, "guard-why", i, "move it right under its guard's # Guards: line (no line between)",
+					"this why: line is under no # Guards: line, so it belongs to no guard"))
+			}
+			under = false
+			continue
+		}
+		k, _, ok := lane.HeaderKey(line)
+		under = ok && k == "Guards"
+	}
 	for _, g := range s.Info.Guards {
 		at := s.guardLine(g.Flag)
 		if at < 0 || !unwritten(g.Why) || unwritten(g.Desc) {
@@ -333,8 +351,9 @@ func checkGuardWhy(c *Context, s *Script) []finding.Finding {
 // of the approval prompt.
 const guardDoesMax = 100
 
-// checkGuardDoes: what a guard does is one quick line, the action and its
-// exact target: "cleanup" says neither, and a paragraph isn't read.
+// checkGuardDoes: what a guard does is one quick line, written: a
+// paragraph isn't read, and a placeholder says nothing. (Whether the line
+// names the action and its target is for review: a word count can't say.)
 func checkGuardDoes(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, g := range s.Info.Guards {
@@ -347,9 +366,6 @@ func checkGuardDoes(c *Context, s *Script) []finding.Finding {
 				out = append(out, f(finding.Warn, "guard-does", at, "say the action and its exact target: remove SST stack orders-prod (14 resources)",
 					"guard %s's description is still a placeholder: %s", g.Flag, desc))
 			}
-		case len(strings.Fields(desc)) < 3:
-			out = append(out, f(finding.Warn, "guard-does", at, "say the action and its exact target: remove SST stack orders-prod (14 resources)",
-				"guard %s says only %q: not what it changes, or where", g.Flag, desc))
 		case len(desc) > guardDoesMax:
 			out = append(out, f(finding.Warn, "guard-does", at, "keep it to the action and target; the reason goes on its #   why: line, or split the guard",
 				"guard %s's description is %d characters; the prompt shows one line (%d at most)", g.Flag, len(desc), guardDoesMax))

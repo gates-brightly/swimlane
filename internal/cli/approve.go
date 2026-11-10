@@ -46,7 +46,10 @@ func cmdApproveHook(args []string) error {
 		return err
 	}
 	flag := args[1]
-	text := guardText(root, cfg, n, flag)
+	// One manifest, built once: the pin, and what the header says the
+	// guard does.
+	m := laneManifest(root, cfg, n)
+	text := m.Guard(flag)
 	if args[2] == "" {
 		args[2] = text.Does // guard FLAG: the header says what it does
 	}
@@ -73,7 +76,6 @@ func cmdApproveHook(args []string) error {
 		history.Log(root, history.Entry{Event: history.Decline, Lane: n, Job: job, Run: run, Detail: desc + "  (blocked: " + why + ")"})
 		return endRound(root, n, 1, "guard "+flag+" can't be answered on this watcher: "+why)
 	}
-	m := laneManifest(root, cfg, n)
 	sha, man := scriptSHA(root, n), ""
 	if m != nil {
 		sha, man = m.ScriptSHA, m.SHA256
@@ -307,12 +309,7 @@ var approveRecorded bool
 // guardText is what lane n's header says guard flag does and why: from
 // the pinned copy's manifest under swim run, else the script on disk.
 func guardText(root string, cfg *config.Config, n int, flag string) manifest.GuardText {
-	if m := laneManifest(root, cfg, n); m != nil {
-		if t, ok := m.GuardText[flag]; ok {
-			return t
-		}
-	}
-	return manifest.GuardText{}
+	return laneManifest(root, cfg, n).Guard(flag)
 }
 
 // cmdGuardTextHook prints what lane N's header says guard FLAG does (the

@@ -235,6 +235,15 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	return m, nil
 }
 
+// Guard is what the header says guard flag does and why (nothing, for a
+// nil manifest or a guard it doesn't describe).
+func (m *Manifest) Guard(flag string) GuardText {
+	if m == nil {
+		return GuardText{}
+	}
+	return m.GuardText[flag]
+}
+
 // GuardText is what a guard does and why it's done, as its header says.
 type GuardText struct {
 	Does string `yaml:"does,omitempty"`
