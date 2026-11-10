@@ -18,7 +18,9 @@ before answering, often nothing else:
   users (snapshot keeps them)", not "cleanup". Can't say it in a line?
   Split the guard.
 - **Why**, on the `#   why:` line right under it: the reason for the
-  change, with its date. "load-test cleanup (2026-10-29)".
+  change, with its date. "load-test cleanup (2026-10-29)". `why:` is
+  lowercase on purpose: indented, it belongs to the guard above it, not
+  a header key of its own like `Guards:`.
 
 `guard FLAG` takes both from the header, from the lane's pinned copy
 under `swim run`: a lane can't change at run time what you're asked. The

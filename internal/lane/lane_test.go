@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -317,5 +318,30 @@ func TestGuardWhy(t *testing.T) {
 	}
 	if fmt.Sprint(info.Guards) != "[{DROP drop table t it moved} {SHIP ship it }]" {
 		t.Errorf("sidecar guards: %+v", info.Guards)
+	}
+}
+
+// Tracked answers only what git answers: a file git can't say about (here,
+// outside any repo) is an error, never "not tracked".
+func TestTracked(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(root))
+	os.WriteFile(Script(root, 1), []byte("echo\n"), 0o755)
+	os.WriteFile(Script(root, 2), []byte("echo\n"), 0o755)
+	if _, err := Tracked(root, Script(root, 1)); err == nil {
+		t.Fatal("outside a repo: no error")
+	}
+	git := func(args ...string) {
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("add", "lane.1.sh")
+	if tracked, err := Tracked(root, Script(root, 1)); err != nil || !tracked {
+		t.Errorf("added: %v, %v", tracked, err)
+	}
+	if tracked, err := Tracked(root, Script(root, 2)); err != nil || tracked {
+		t.Errorf("untracked: %v, %v", tracked, err)
 	}
 }

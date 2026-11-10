@@ -170,8 +170,13 @@ func (o *Options) removeLeftover(f finding.Finding) (bool, error) {
 	case "leftover":
 		ok = dir == filepath.Join(o.Root, ".swim") && retiredWhat(filepath.Base(p)) != ""
 	case "stub":
+		// Only one git says it doesn't track: when git can't answer, the
+		// stub stays (the finding says why).
 		for _, s := range stubFiles(o.Root) {
-			ok = ok || s == p && !lane.Tracked(o.Root, p)
+			if s == p {
+				tracked, err := lane.Tracked(o.Root, p)
+				ok = err == nil && !tracked
+			}
 		}
 	}
 	if !ok {
@@ -186,12 +191,14 @@ func (o *Options) removeLeftover(f finding.Finding) (bool, error) {
 // checkStubs finds the "nothing ready" stubs an older swim archive left
 // in place of a lane's script: the lane is empty, so the file is clutter.
 // --fix deletes one git doesn't track; one it does is the operator's to
-// git rm (swim never writes to git).
+// git rm (swim never writes to git). When git can't say, --fix leaves it.
 func checkStubs(o *Options) []finding.Finding {
 	var out []finding.Finding
 	for _, p := range stubFiles(o.Root) {
 		fix := "swim doctor --fix (deletes it)"
-		if lane.Tracked(o.Root, p) {
+		if tracked, err := lane.Tracked(o.Root, p); err != nil {
+			fix = "delete it or git rm it yourself; --fix won't: " + err.Error()
+		} else if tracked {
 			fix = "git rm " + o.rel(p) + " (swim never writes to git)"
 		}
 		out = append(out, fd(finding.Warn, "stub", o.rel(p), fix,

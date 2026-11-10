@@ -59,6 +59,14 @@ history stays here, since `swim changelog --since` reads it.
   lines, a comment, or a line a `\` continues.
 - **`guard-why` also warns on a `why:` line under no `# Guards:` line,**
   which swim reads nothing from.
+- **`swim archive` and `swim doctor --fix` refuse when git can't say
+  whether it tracks a script** (no git, not a repo, a repo git won't
+  read for dubious ownership): "can't ask git whether it tracks
+  lane.1.sh: ...". They used to take that as "not tracked" and could
+  delete a committed lane's script or stub.
+- **The archive note lives in `.swim.log` only:** status.yml no longer
+  keeps a copy (`last_note`). `swim status` and `swim status --yaml`
+  (still `last_note`) read it from the archive's line there.
 
 ### Added
 

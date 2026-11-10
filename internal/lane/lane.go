@@ -680,16 +680,29 @@ func RemoveScript(root string, n int) error {
 	return nil
 }
 
-// Tracked reports whether git tracks the file at path (false outside a
-// repo, or without git).
-func Tracked(root, path string) bool {
+// Tracked reports whether git tracks the file at path. It errors when
+// git can't answer (no git, not a repo, a repo git refuses to read):
+// callers that delete files refuse then, rather than guess.
+func Tracked(root, path string) (bool, error) {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
-		return false
+		return false, err
 	}
 	c := exec.Command("git", "ls-files", "--error-unmatch", "--", rel)
 	c.Dir = root
-	return c.Run() == nil
+	out, err := c.CombinedOutput()
+	if err == nil {
+		return true, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return false, nil // git answered: not tracked
+	}
+	msg := strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
+	if msg == "" {
+		msg = err.Error()
+	}
+	return false, fmt.Errorf("can't ask git whether it tracks %s: %s", rel, msg)
 }
 
 // NewJobID returns a random (version 4) UUID.

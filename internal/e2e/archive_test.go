@@ -55,7 +55,8 @@ func TestArchiveDone(t *testing.T) {
 // A committed lane (git tracks its script, as a repo's CI lanes) isn't
 // archived: swim archive N refuses it, and --passed and the "passed, not
 // archived" line leave it out. swim doctor --fix sweeps an untracked stub
-// an older swim left, and names a tracked one for git rm.
+// an older swim left, and names a tracked one for git rm. When git can't
+// answer, neither deletes anything.
 func TestArchiveCommittedAndOldStubs(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "ci", `step "a" true`)
@@ -99,6 +100,22 @@ func TestArchiveCommittedAndOldStubs(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(r.root, "lane.6.sh")); err != nil {
 		t.Errorf("doctor --fix removed a tracked stub: %v", err)
+	}
+
+	// git can't answer (here, no repo): archive and doctor --fix refuse
+	// rather than take the committed files for untracked ones.
+	if err := os.Rename(filepath.Join(r.root, ".git"), filepath.Join(r.root, "git.off")); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := r.swim("archive", "1", "done"); code == 0 || !strings.Contains(out, "can't ask git whether it tracks lane.1.sh") {
+		t.Errorf("archive without git's answer: %d %s", code, out)
+	}
+	out, _ = r.swim("doctor", "--fix")
+	contains(t, "doctor without git", out, "--fix won't: can't ask git whether it tracks lane.6.sh")
+	for _, f := range []string{"lane.1.sh", "lane.6.sh"} {
+		if _, err := os.Stat(filepath.Join(r.root, f)); err != nil {
+			t.Errorf("deleted %s without git's answer: %v", f, err)
+		}
 	}
 }
 
