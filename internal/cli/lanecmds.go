@@ -41,16 +41,6 @@ func laneEnv(cmd string) (string, error) {
 	return n, nil
 }
 
-// hasDashDash reports whether args has a "--" separator.
-func hasDashDash(args []string) bool {
-	for _, a := range args {
-		if a == "--" {
-			return true
-		}
-	}
-	return false
-}
-
 // laneStep runs one step for swim step/gate/snapshot inside a lane: the
 // options and label, then the command after "--".
 func laneStep(cmd string, args []string) error {

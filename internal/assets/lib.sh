@@ -374,13 +374,6 @@ step() {
   _swim_run_step "" "$@"
 }
 
-# run — the old name of step, kept for one release (swim lint warns
-# run-is-step; swim lint --fix rewrites it). Remove after the next release
-# (T38).
-run() {
-  _swim_run_step "" "$@"
-}
-
 # gate [options] "<label>" cmd [args...] — like step, but a failure (after
 # the last attempt) stops the round here, before any later (destructive)
 # step. Fail-closed.

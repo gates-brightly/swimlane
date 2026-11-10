@@ -21,9 +21,8 @@ import (
 var (
 	stepFlagOpts = map[string]bool{"--soft": true, "--no-retry-timeout": true, "--expect-fail": true}
 	stepOptNames = "--timeout, --retry, --backoff, --retry-on, --key, --target, --soft, --no-retry-timeout, --expect-fail"
-	// stepFuncs are the library's step functions. run is step's old name,
-	// kept for one release: remove it after the next release (T38).
-	stepFuncs = map[string]bool{"step": true, "gate": true, "snapshot": true, "run": true}
+	// stepFuncs are the library's step functions.
+	stepFuncs = map[string]bool{"step": true, "gate": true, "snapshot": true}
 )
 
 // commandWords are commands a label is easily mistaken for: step echo hi
@@ -377,8 +376,8 @@ func checkGuardDoes(c *Context, s *Script) []finding.Finding {
 var (
 	// stepInSubstRE: a step in $(...) or backticks; stepAfterPipeRE: a
 	// step a pipe feeds (it runs in a subshell).
-	stepInSubstRE   = regexp.MustCompile("(?:\\$\\(|`)\\s*(?:if\\s+|!\\s*)?(step|run|gate|snapshot)\\b")
-	stepAfterPipeRE = regexp.MustCompile(`(?:^|[^|])\|\s*(?:if\s+|!\s*)?(step|run|gate|snapshot)\b`)
+	stepInSubstRE   = regexp.MustCompile("(?:\\$\\(|`)\\s*(?:if\\s+|!\\s*)?(step|gate|snapshot)\\b")
+	stepAfterPipeRE = regexp.MustCompile(`(?:^|[^|])\|\s*(?:if\s+|!\s*)?(step|gate|snapshot)\b`)
 	// pipedLoopRE: a while or until loop a pipe feeds; loopKeywordRE: the
 	// words that open and close a loop body.
 	pipedLoopRE   = regexp.MustCompile(`(?:^|[^|])\|\s*(?:while|until)\b`)
@@ -442,23 +441,6 @@ func checkStepSubshell(c *Context, s *Script) []finding.Finding {
 		out = append(out, f(finding.Error, "step-subshell", i,
 			fmt.Sprintf("call %s on its own line; for its output, have the command write a file, or use snapshot", m[1]),
 			"%s inside %s runs in a subshell: its result never reaches the lane (last_failed, the round's counts), and $(...) captures swim's output, not the command's", m[1], where))
-	}
-	return out
-}
-
-// checkRunIsStep: run is step's old name, kept for one release. Remove
-// after the next release (T38), with the alias.
-func checkRunIsStep(c *Context, s *Script) []finding.Finding {
-	if !s.Lib {
-		return nil
-	}
-	calls := runCalls(s.v)
-	var out []finding.Finding
-	for i := range s.v.raw {
-		if len(calls[i]) > 0 {
-			out = append(out, f(finding.Warn, "run-is-step", i, "write step \"<label>\" cmd (swim lint --fix rewrites it)",
-				"run is now step: run still works for this release only"))
-		}
 	}
 	return out
 }

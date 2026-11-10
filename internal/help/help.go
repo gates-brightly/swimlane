@@ -324,8 +324,7 @@ var Commands = map[string]string{
   step and record PASS or FAIL <label>; a failure doesn't end the round.
   Options: --timeout D, --retry N, --backoff D, --retry-on CODES,
   --no-retry-timeout, --soft, --expect-fail[=CODES], --key K, --target T.
-  (In a bash lane, use the library's step.) The old in-lane form, swim run
-  "<label>" -- cmd, still works for one release.
+  (In a bash lane, use the library's step.)
 `,
 	"gate": `swim gate [options] "<label>" -- cmd [args...]
 
@@ -710,10 +709,10 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   --fix adds the header lines a script's body needs, for you to review:
   # Guards: for each guard it uses without declaring (with the guard's own
   action as the description), # Guards: * for a flag it names at run time,
-  # Includes: for a repo file it sources or imports. In a bash lane it
-  also renames run, step's old name, to step. It never removes a line or
-  rewrites one otherwise, and skips running lanes and lanes of jobs. It
-  also rewrites a # Job: line, Round-ID's old name, to # Round-ID:.
+  # Includes: for a repo file it sources or imports. It never removes a
+  line or rewrites one otherwise, and skips running lanes and lanes of
+  jobs. It also rewrites a # Job: line, Round-ID's old name, to
+  # Round-ID:.
 
   Checks [code] (level):
     round (error)          no # Round: line
@@ -734,8 +733,6 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                            (refused when it asks; a warning with # Guards: *)
     guard-dynamic (error)  guard "$FLAG" without # Guards: *
     guard-unused (warn)    a # Guards: flag no guard uses
-    run-is-step (warn)     a call of run, step's old name (works for this
-                           release only; --fix renames it)
     job-is-round-id (warn) a # Job: line, Round-ID's old name (--fix renames
                            it)
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block

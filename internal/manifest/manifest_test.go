@@ -10,7 +10,8 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 )
 
-// lane3 calls run, step's old name: its bytes are hashed (goldenV2).
+// lane3 calls run (step's old name, since removed): only its bytes matter,
+// hashed (goldenV2).
 const lane3 = `#!/usr/bin/env bash
 # Round: drop orders
 # Includes: lib/inc.sh lib/orders.sh lib/deep.sh

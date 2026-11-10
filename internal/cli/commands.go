@@ -466,12 +466,6 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 }
 
 func cmdRun(args []string) error {
-	if hasDashDash(args) {
-		// swim run "<label>" -- cmd: the old name of swim step, inside a
-		// lane, kept for one release. Remove after the next release (T38),
-		// with hasDashDash.
-		return laneStep("step", args)
-	}
 	var rf runFlags
 	rest, err := rf.parse(args)
 	if err != nil {

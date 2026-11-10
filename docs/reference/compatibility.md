@@ -88,8 +88,8 @@ release's **Removed** section says what went, and its **Upgrading** notes
 say what to change. Where a change can be made for you, a tool does it
 (`swim lint --fix` for lane scripts, `swim doctor --fix` for leftover
 state). The rare exception is a rename every lane would hit at once (in-lane
-`run` became `step`): the old name works for one release, with a lint
-warning.
+`run` became `step`): the old name worked for one release, with a lint
+warning and a `--fix` rename, then went.
 
 `swim changelog --since <version>` prints everything after the version you
 came from.

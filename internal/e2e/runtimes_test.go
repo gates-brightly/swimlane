@@ -65,26 +65,6 @@ touch "$SWIM_ROOT/after-gate"
 	}
 }
 
-// run, step's old name, still runs a step for one release: in a bash lane
-// (lint warns run-is-step) and as swim run "<label>" -- cmd in a wrapped
-// one. Remove after the next release (T38).
-func TestRunAliasForStep(t *testing.T) {
-	r := newRepo(t)
-	r.write("lane.1.sh", "#!/usr/bin/env swim\n# swim: syntax 4\n# Round: old bash name\nrun \"old bash\" true\nstep \"new bash\" true\n", 0o755)
-	r.write("lane.2.sh", "#!/usr/bin/env bash\n# Round: old wrapped name\nswim run \"old wrapped\" -- true\nswim step \"new wrapped\" -- true\n", 0o755)
-	if out, code := r.swim("run", "1", "2", "--plain"); code != 0 {
-		t.Fatalf("exit %d:\n%s", code, out)
-	}
-	contains(t, "lane 1", r.log(1), "PASS  old bash", "PASS  new bash")
-	contains(t, "lane 2", r.log(2), "PASS  old wrapped", "PASS  new wrapped")
-	out, _ := r.swim("lint", "1")
-	contains(t, "lint", out, "[run-is-step]", "run is now step")
-	r.swim("lint", "1", "--fix")
-	if data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh")); !strings.Contains(string(data), "step \"old bash\" true") {
-		t.Errorf("lint --fix left:\n%s", data)
-	}
-}
-
 // Once a gate fails no later step runs, even in a program that outlives
 // its stop: this one ignores SIGTERM, so it reaches its next swim step
 // before the wrapper's SIGKILL, every time. That step is refused, not run,

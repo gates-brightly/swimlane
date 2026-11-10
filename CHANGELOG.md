@@ -43,6 +43,7 @@ history stays here, since `swim changelog --since` reads it.
 - A guard says what it does and why: `# Guards: FLAG  <does>`, then `#   why: <reason, date>` under it; the approval asks both.
 - `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy).
 - `swim archive` refuses a committed lane instead of stubbing it; no swim writes stubs any more.
+- `run`, step's old name, is gone: a lane that still calls it fails ("run: command not found").
 
 ### Changed
 
@@ -102,6 +103,21 @@ history stays here, since `swim changelog --since` reads it.
   `# Guards:` line `--fix` adds comes with a `#   why: <...>` line to
   fill in. `swim new`'s template, the guides and the skill use the new
   form.
+
+### Removed
+
+- **The `run` alias for `step`:** the library's `run`, the in-lane
+  `swim run "<label>" -- cmd`, lint's `run-is-step` and `swim lint
+  --fix`'s rename. They were kept for one release after the rename, and
+  0.20261110.1 shipped it.
+
+### Upgrading
+
+- **A lane that still calls `run` fails** where it calls it: `run:
+  command not found`, which the round logs. With an older swim
+  (0.20261110.1 or before), `swim lint --fix` renames the calls to
+  `step`; with this one, rename them yourself (`step "<label>" cmd`, and
+  `swim step "<label>" -- cmd` in a wrapped lane).
 
 ## 0.20261110.1 (v0.20261110.1, 2026-11-10)
 

@@ -18,9 +18,6 @@ type Fixed struct {
 	Lane  int
 	File  string
 	Added []string // header lines added, as written
-	// Renamed: the lines (1-based) whose run calls it rewrote to step.
-	// Remove after the next release (T38).
-	Renamed []int
 	// RoundID: the line (1-based) whose # Job: it rewrote to # Round-ID:.
 	RoundID int
 	// Shortened: the lines (1-based) whose guard FLAG "<text>" it rewrote
@@ -34,10 +31,9 @@ type Fixed struct {
 // own action as the description), # Guards: * for a flag it names at run
 // time, # Includes: for a repo file it sources or imports. The header is
 // the lane's contract (swim refuses what it doesn't declare); these are
-// lines for a person to review, so it never removes or rewrites one. In a
-// bash lane it also rewrites run, step's old name, to step, and in any
-// lane # Job:, Round-ID's old name, to # Round-ID:, and drops a guard
-// call's text that only repeats its # Guards: line. It skips
+// lines for a person to review, so it never removes or rewrites one. It
+// also rewrites # Job:, Round-ID's old name, to # Round-ID:, and in a bash
+// lane drops a guard call's text that only repeats its # Guards: line. It skips
 // running lanes, lanes of jobs (each job declares its own guards)
 // and compiled lanes.
 func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
@@ -71,13 +67,6 @@ func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
 		}
 		src, roundID := renameJob(string(data))
 		fx.RoundID = roundID
-		if s := NewScript(n, src); s.Lib {
-			var renamed []int
-			src, renamed = renameRun(src)
-			for _, i := range renamed {
-				fx.Renamed = append(fx.Renamed, i+1)
-			}
-		}
 		s := NewScript(n, src)
 		s.Name = fx.File
 		add := missingHeader(root, s)
@@ -101,7 +90,7 @@ func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
 				fx.Shortened = append(fx.Shortened, i+1)
 			}
 		}
-		if len(add) == 0 && len(fx.Renamed) == 0 && fx.RoundID == 0 && len(fx.Shortened) == 0 {
+		if len(add) == 0 && fx.RoundID == 0 && len(fx.Shortened) == 0 {
 			continue
 		}
 		st, err := os.Stat(path)
@@ -253,93 +242,4 @@ func headerEnd(lines []string) int {
 		end = i + 1
 	}
 	return end
-}
-
-// runCalls finds the calls of run, the old name of the library's step
-// function, in a bash lane: the column of each run that starts a
-// statement (at the start of a line, or after ; & | ( { ) ! `, then, do,
-// else, if, elif, while or until, or first in a "$(...)") and has an
-// argument after it. Never one in quoted text, a comment or a heredoc body
-// (the bare view blanks those), on a line a \ continues, or in a lane that defines a run of its
-// own. Remove after the next release (T38), with the run alias.
-func runCalls(v *view) map[int][]int {
-	for i, line := range v.bare {
-		if v.isCode(i) && runDefRE.MatchString(line) {
-			return nil
-		}
-	}
-	out := map[int][]int{}
-	cont := false
-	for i, line := range v.exp {
-		wasCont := cont
-		cont = v.isCode(i) && continued(v.code[i])
-		if !v.isCode(i) || v.inQuote[i] {
-			continue
-		}
-		for j := 0; j+3 < len(line); j++ {
-			if line[j:j+3] != "run" || line[j+3] != ' ' && line[j+3] != '\t' || strings.TrimSpace(line[j+3:]) == "" {
-				continue
-			}
-			if j > 0 && !strings.ContainsRune(" \t;&|({)!`", rune(line[j-1])) {
-				continue // part of a longer word (npm-run, xrun)
-			}
-			before := strings.TrimRight(line[:j], " \t")
-			switch {
-			case v.bare[i][j:j+3] == "run":
-				// Code: bare is exp with double-quoted text blanked.
-				if !statementStart(strings.TrimRight(v.bare[i][:j], " \t"), wasCont) {
-					continue
-				}
-			case strings.HasSuffix(before, "$(") || strings.HasSuffix(before, "`"):
-				// "$(run ...)": quoted, but bash runs it.
-			default:
-				continue
-			}
-			out[i] = append(out[i], j)
-		}
-	}
-	return out
-}
-
-// runDefRE: a lane's own function named run (a regular expression, kept:
-// lane.Commands splits a word at its parentheses).
-var runDefRE = regexp.MustCompile(`(?:^|[\s;&|{])(?:function\s+run\b|run\s*\(\s*\))`)
-
-// statementStart reports whether a command word after before (the line's
-// text up to it, trailing blanks trimmed) starts a statement.
-func statementStart(before string, continued bool) bool {
-	if before == "" {
-		return !continued
-	}
-	if strings.ContainsRune(";&|({)!`", rune(before[len(before)-1])) {
-		return true
-	}
-	k := strings.LastIndexAny(before, " \t;&|(){}!`")
-	switch before[k+1:] {
-	case "then", "do", "else", "if", "elif", "while", "until":
-		return k < 0 || statementStart(strings.TrimRight(before[:k+1], " \t"), continued)
-	}
-	return false
-}
-
-// renameRun rewrites src's run calls (runCalls) to step: what swim lint
-// --fix does for a bash lane. It returns the new text and the 0-based
-// lines it changed. Remove after the next release (T38).
-func renameRun(src string) (string, []int) {
-	calls := runCalls(scan(src))
-	if len(calls) == 0 {
-		return src, nil
-	}
-	lines := strings.Split(src, "\n")
-	var changed []int
-	for i, cols := range calls {
-		l := lines[i]
-		for k := len(cols) - 1; k >= 0; k-- {
-			l = l[:cols[k]] + "step" + l[cols[k]+3:]
-		}
-		lines[i] = l
-		changed = append(changed, i)
-	}
-	slices.Sort(changed)
-	return strings.Join(lines, "\n"), changed
 }
