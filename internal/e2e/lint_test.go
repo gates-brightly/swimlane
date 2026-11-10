@@ -229,6 +229,35 @@ func TestDoctor(t *testing.T) {
 	}
 }
 
+// A .swim.lock means a swim older than v0.20261105.5 still runs here:
+// swim doctor names the version that wrote it. --fix deletes an untracked
+// one and leaves a committed one for git rm.
+func TestDoctorOldSwimLock(t *testing.T) {
+	r := newRepo(t)
+	lock := "# swim lock\nsyntax:\n    script: 4\nversion: 0.20261105.4\n"
+	write := func() {
+		if err := os.WriteFile(filepath.Join(r.root, ".swim.lock"), []byte(lock), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write()
+	out, _ := r.swim("doctor")
+	contains(t, "doctor", out, ".swim.lock", "written by swim 0.20261105.4", "swim doctor --fix (deletes it)")
+	r.swim("doctor", "--fix")
+	if _, err := os.Stat(filepath.Join(r.root, ".swim.lock")); !os.IsNotExist(err) {
+		t.Errorf("doctor --fix left an untracked .swim.lock: %v", err)
+	}
+
+	write()
+	r.git("add", ".swim.lock")
+	r.git("commit", "-q", "-m", "lock")
+	out, _ = r.swim("doctor", "--fix")
+	contains(t, "doctor, committed", out, "git rm .swim.lock (swim never writes to git)")
+	if _, err := os.Stat(filepath.Join(r.root, ".swim.lock")); err != nil {
+		t.Errorf("doctor --fix removed a committed .swim.lock: %v", err)
+	}
+}
+
 func TestDoctorBrokenConfig(t *testing.T) {
 	r := newRepo(t)
 	hermeticPath(r)

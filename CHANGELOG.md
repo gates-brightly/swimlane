@@ -64,6 +64,10 @@ history stays here, since `swim changelog --since` reads it.
   read for dubious ownership): "can't ask git whether it tracks
   lane.1.sh: ...". They used to take that as "not tracked" and could
   delete a committed lane's script or stub.
+- **`swim doctor` finds a `.swim.lock`:** only a swim older than
+  v0.20261105.5 writes one now, so the warning (`leftover`) names the
+  version that wrote it: that swim still runs here and wants updating.
+  `--fix` deletes an untracked one; for a committed one it says `git rm`.
 - **The archive note lives in `.swim.log` only:** status.yml no longer
   keeps a copy (`last_note`). `swim status` and `swim status --yaml`
   (still `last_note`) read it from the archive's line there.

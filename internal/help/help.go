@@ -814,7 +814,9 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     leftover (warn)           a file under .swim/ swim no longer reads
                               (hub.yml, headless.*, groups/, observations/,
                               out/, checkpoints/, earmarks/, lane1.2.claim,
-                              ...)
+                              ...), or a .swim.lock, which only a swim older
+                              than v0.20261105.5 writes (named by version;
+                              --fix deletes it unless git tracks it)
     stub (warn)               a lane.N.sh stub an older swim archive left
                               (--fix deletes it unless git tracks it)
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
