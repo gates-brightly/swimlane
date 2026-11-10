@@ -44,8 +44,14 @@ Only the first is something swim can know.
   fixed, not argued.
 - A new check starts as a warning unless it's about how swim reads the
   script; promoting one means showing the form runs other than it reads.
-- A test runs each refused form through lint and the runtime, so the two
-  can't drift.
+- A corpus test (`TestLintAndRuntimeAgree`, internal/e2e/corpus_test.go)
+  runs the step and header forms through both lint and `swim run`: the
+  forms lint passes run as written, and the ones it refuses (`step`,
+  `step-subshell`, `step-pipe`, `short-form`, `header-key`, `timeout`,
+  `header-comment`) `swim run` refuses too. Lint's other errors (a
+  cycle in `# After:`, an undeclared guard, a blocked command, ...) are
+  tested in lint alone. A form seen to run other than it reads gets a
+  line in the corpus.
 
 ## See also
 
