@@ -82,6 +82,34 @@ func checkWorkspaceLive(c *Context, s *Script) []finding.Finding {
 		"runs in the working tree (# Workspace: live): files it reads but doesn't pin can change after it's approved")}
 }
 
+// checkTreeWrite warns about a live lane writing a file by a relative
+// path: it lands in the working tree and outlives the round, clutter in
+// the repo. (A staged lane's writes land in its pinned copy.) A path under
+// a variable ($TMPDIR, $SWIM_ROOT/...) or .swim/, or an absolute one, is
+// left alone.
+func checkTreeWrite(c *Context, s *Script) []finding.Finding {
+	if s.Info.Workspace != lane.WorkspaceLive {
+		return nil
+	}
+	ws := s.writes()
+	paths := make([]string, 0, len(ws))
+	for p := range ws {
+		paths = append(paths, p)
+	}
+	sort.Slice(paths, func(a, b int) bool {
+		return ws[paths[a]] < ws[paths[b]] || ws[paths[a]] == ws[paths[b]] && paths[a] < paths[b]
+	})
+	var out []finding.Finding
+	for _, p := range paths {
+		if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "$") || strings.HasPrefix(p, "~") || strings.HasPrefix(p, ".swim/") {
+			continue
+		}
+		out = append(out, f(finding.Warn, "tree-write", ws[p], "save it with snapshot (kept under .swim/snapshots/), or write under $TMPDIR",
+			"writes %s into the working tree: it stays in the repo after the round", p))
+	}
+	return out
+}
+
 // treeTools check or build their working directory when given no paths
 // (or ./...): in a pinned copy with nothing pinned they read nothing, and
 // some pass on it (gofmt -l). Each maps to the subcommands

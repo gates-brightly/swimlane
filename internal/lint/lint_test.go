@@ -494,3 +494,24 @@ func lintScripts(cfg *config.Config, scripts map[int]*Script, n int) []finding.F
 	finding.Sort(fs)
 	return fs
 }
+
+// A live lane writing a file by a relative path leaves it in the repo; a
+// path under a variable, an absolute one or .swim/ is left alone, and a
+// staged lane's writes land in its pinned copy.
+func TestTreeWrite(t *testing.T) {
+	live := func(steps string) string {
+		return before(before(clean(1), "stage verify\n", steps), "# Timeout:", "# Workspace: live\n# swim:lint-ignore-file workspace-live reads the checkout\n")
+	}
+	fs := Lint(cfg4(), map[int]string{1: live("gh pr view 1 > pr.description.md\nstep \"fetch\" curl -fsS -o out/report.json https://example.com\n")}, 1)
+	if codes(fs) != "tree-write tree-write" || !strings.Contains(fs[0].Message, "pr.description.md") || !strings.Contains(fs[1].Message, "out/report.json") {
+		t.Errorf("live writes: %+v", fs)
+	}
+	for name, script := range map[string]string{
+		"elsewhere": live("echo x > \"$TMPDIR/x.md\"\necho x > /tmp/x.md\necho x > .swim/x.md\n"),
+		"staged":    before(clean(1), "stage verify\n", "gh pr view 1 > pr.description.md\n"),
+	} {
+		if fs := Lint(cfg4(), map[int]string{1: script}, 1); len(fs) != 0 {
+			t.Errorf("%s: %+v", name, fs)
+		}
+	}
+}

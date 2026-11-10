@@ -56,7 +56,7 @@ var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true, "gnu-only": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
 	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
-	"step": true, "step-pipe": true, "step-subshell": true, "guard-text": true, "run-is-step": true, "modules": true,
+	"step": true, "step-pipe": true, "tree-write": true, "step-subshell": true, "guard-text": true, "run-is-step": true, "modules": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -93,6 +93,7 @@ var Checks = []Check{
 	{"parse", finding.Error, false, "bash can't parse the script (bash -n)", checkParse},
 	{"round", finding.Error, false, "no `# Round:` line", checkRound},
 	{"workspace-live", finding.Warn, false, "`# Workspace: live`: the lane runs in the working tree and reads files no approval covers", checkWorkspaceLive},
+	{"tree-write", finding.Warn, false, "a `# Workspace: live` lane writes a file into the working tree (> notes.md, -o out.json, tee x.log): it's left in the repo after the round", checkTreeWrite},
 	{"workspace-file", finding.Warn, false, "a staged lane names a repo file its # Includes: doesn't list (cat deploy.yaml): the pinned copy doesn't have it", checkWorkspaceFile},
 	{"workspace-empty", finding.Warn, false, "a staged lane runs a tool over its whole directory (go vet ./..., gofmt -l .) with no # Includes:, so the tool reads an empty copy", checkWorkspaceEmpty},
 	{"task", finding.Error, false, "a `# Task:` name that isn't one, is a swim command, or another lane's too", checkTask},

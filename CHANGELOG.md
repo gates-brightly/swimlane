@@ -38,6 +38,33 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Changed
+
+- **`swim archive` removes the lane's script:** the slot empties without a
+  stub left behind, so archived lanes no longer pile up as `lane.N.sh`
+  files. The note lives on in `swim status N` (`note: ...`) and in `swim
+  log`. A script git tracks (a committed CI lane) still becomes a stub, so
+  no deletion gets committed by accident.
+- **`swim new N` above a free lane** notes the lowest free one: take it
+  (`swim new <task>` does), so lane numbers don't climb.
+
+### Added
+
+- **Passed, not archived:** bare `swim` and `swim status` end with a line
+  naming lanes whose round passed and nobody has archived (`2 lanes
+  passed, not archived (lane 3,5) → swim archive 3 5`). Committed CI lanes
+  are left out.
+- **`swim doctor` finds old stubs (`stub`):** an untracked `lane.N.sh`
+  stub an older `swim archive` left; `swim doctor --fix` deletes it.
+- **`swim lint` warns on `tree-write`:** a `# Workspace: live` lane that
+  writes a file by a relative path (`> notes.md`, `-o out.json`, `tee
+  x.log`) leaves it in the repo; save output with `snapshot`, or write
+  under `$TMPDIR`.
+- **The skill and `swim guide agents`** close every round out with `swim
+  archive`, take the lowest free lane, and keep an agent's own notes,
+  drafts and PR descriptions in its scratchpad or `swim note`, never in
+  the repo.
+
 ## 0.20261109.1 (v0.20261109.1, 2026-11-09)
 
 **What changed for you**

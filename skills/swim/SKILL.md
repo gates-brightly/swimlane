@@ -35,7 +35,7 @@ hand a round over, workers, several tasks at once. Follow it.
 
 1. **Catch up:** `swim`, `swim status`, then `swim log --since 1h` (or the
    last run id you read): one line per action since.
-2. **Write** `swim new N "<goal>"`, then the steps (`swim guide lanes`):
+2. **Write** `swim new <task> "<goal>"` (the lowest free lane), then the steps (`swim guide lanes`):
 
    ```bash
    stage snapshot
@@ -75,6 +75,19 @@ hand a round over, workers, several tasks at once. Follow it.
    `FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:41: got 1`. When
    that isn't enough, `swim log N`. `passed` means exit 0: read the verify
    stage's output. A dry run changed nothing.
+7. **Close out:** once you've read what shows it worked, `swim archive N
+   "<why it's done>" --as <what-happened>`: the log is kept, the lane's
+   script goes, and the slot is free again. Archive a failed round you're
+   abandoning too, with a name that says so (`--as orders-apply-failed`).
+
+## Keep the repo clean
+
+- **Lane numbers:** `swim new <task>` takes the lowest free lane; with a
+  number, use the lowest free one, never the highest plus one.
+- **Your own files** (notes, drafts, task lists, PR descriptions) go in
+  your scratchpad or `swim note`, never in the repo.
+- **A lane's output** goes through `snapshot` (kept under
+  `.swim/snapshots/`), never `> file` in the working tree.
 
 Then the topic for the job at hand, `swim guide <topic>`:
 

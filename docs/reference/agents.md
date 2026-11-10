@@ -22,6 +22,10 @@ says otherwise:
   than asking them to paste output.
 - **Never write files their machine runs on its own** (`.git/hooks/`,
   `.envrc`, editor tasks): nothing approves them.
+- **Leave nothing else in the repo:** your notes, drafts, task lists and
+  PR descriptions go in your scratchpad or `swim note`; a lane's output
+  goes through `snapshot` (`.swim/snapshots/`), never `> file` in the
+  working tree (lint warns: `tree-write`).
 
 ## What you run
 
@@ -48,8 +52,9 @@ says otherwise:
    `swim log --since RUN` (the last run you read, or a time: `1h`): what
    happened since, one line per action; `swim log ROUND-ID` for a round's
    detail. Don't redo or contradict what the record says without asking.
-2. **Pick lanes:** empty, or unused numbers (1..99). Never one that's
-   running, ready for someone's run, queued, or committed (the repo's CI).
+2. **Pick lanes:** the lowest free ones (`swim new <task>` takes it; `swim
+   new N` notes a lower free lane). Never one that's running, ready for
+   someone's run, queued, or committed (the repo's CI).
 3. **Write:** `swim new N "<goal>"`, then the steps in the short form, bash
    unless the work needs another language ([lanes](lanes.md)). Keep the
    header accurate: the operator reads it without you. Order goes in the
@@ -71,9 +76,11 @@ says otherwise:
    verify/,$p'`). `skipped` (dry run): nothing changed; never a result.
 7. **Close out:** record results (with the round id) where the project tracks
    them, `swim note "<finding>"` for the next session, `swim archive N
-   "<why it's done>" --as <what-happened>` (the log is kept, the lane is empty).
-   Out-of-scope findings go
-   on a follow-up list, never into the round.
+   "<why it's done>" --as <what-happened>` (the log is kept, the script is
+   removed, the slot is free). A failed round you're abandoning is archived
+   too, named so it can be found. `swim` lists lanes that passed and
+   nobody archived. Out-of-scope findings go on a follow-up list, never
+   into the round.
 
 Something looks wrong (stuck `running`, an orphaned batch, a round that
 stopped mid-change, `swim verify` saying no): read-only commands first,

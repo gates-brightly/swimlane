@@ -150,7 +150,7 @@ func goneWatch(p string) (*queue.Presence, string) {
 	return &w, "last beat " + time.Since(beat).Round(time.Minute).String() + " ago"
 }
 
-// removeLeftover deletes a claim-expired, watch-gone or leftover finding's
+// removeLeftover deletes a claim-expired, watch-gone, leftover or stub finding's
 // file, after checking again that it still is one.
 func (o *Options) removeLeftover(f finding.Finding) (bool, error) {
 	rel := strings.TrimSuffix(f.File, "/")
@@ -169,6 +169,10 @@ func (o *Options) removeLeftover(f finding.Finding) (bool, error) {
 		ok = why != "" && dir == queue.WorkersDir(o.Root)
 	case "leftover":
 		ok = dir == filepath.Join(o.Root, ".swim") && retiredWhat(filepath.Base(p)) != ""
+	case "stub":
+		for _, s := range stubFiles(o.Root) {
+			ok = ok || s == p && !lane.Tracked(o.Root, p)
+		}
 	}
 	if !ok {
 		return false, nil
@@ -177,4 +181,41 @@ func (o *Options) removeLeftover(f finding.Finding) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// checkStubs finds the "nothing ready" stubs an older swim archive left
+// in place of a lane's script: the lane is empty, so the file is clutter.
+// A stub git tracks (a committed CI lane's) stays.
+func checkStubs(o *Options) []finding.Finding {
+	var out []finding.Finding
+	for _, p := range stubFiles(o.Root) {
+		if lane.Tracked(o.Root, p) {
+			continue
+		}
+		out = append(out, fd(finding.Warn, "stub", o.rel(p), "swim doctor --fix (deletes it)",
+			"an archived lane's stub; swim archive no longer leaves one"))
+	}
+	return out
+}
+
+// stubFiles lists the lane scripts in root that are stubs, of lanes not
+// running.
+func stubFiles(root string) []string {
+	entries, _ := os.ReadDir(root)
+	var out []string
+	for _, e := range entries {
+		n, _, ok := lane.ParseScriptName(e.Name())
+		if !ok || e.IsDir() {
+			continue
+		}
+		p := filepath.Join(root, e.Name())
+		if info, _ := lane.ReadScript(root, n); !info.Stub || lane.Script(root, n) != p {
+			continue
+		}
+		if _, running := lane.Running(root, n); running {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }

@@ -131,6 +131,7 @@ type Lane struct {
 	// starts.
 	DryRun      []string `yaml:"dry_run,flow,omitempty" json:"dry_run,omitempty"`
 	LastArchive string   `yaml:"last_archive,omitempty" json:"last_archive,omitempty"`
+	LastNote    string   `yaml:"last_note,omitempty" json:"last_note,omitempty"` // swim archive's note
 }
 
 // File is the whole status.yml document.

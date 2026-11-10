@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -621,6 +622,33 @@ func WriteScriptAs(root string, n int, ext, content string, force bool) error {
 		}
 	}
 	return nil
+}
+
+// RemoveScript deletes lane n's script, in any language, and its sidecar
+// unless the lane is running: swim archive empties the slot. A script git
+// tracks (a repo's committed CI lane) is left for the caller.
+func RemoveScript(root string, n int) error {
+	if err := refuseRunning(root, n); err != nil {
+		return err
+	}
+	for _, p := range append(Scripts(root, n), Sidecar(root, n)) {
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+// Tracked reports whether git tracks the file at path (false outside a
+// repo, or without git).
+func Tracked(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	c := exec.Command("git", "ls-files", "--error-unmatch", "--", rel)
+	c.Dir = root
+	return c.Run() == nil
 }
 
 // NewJobID returns a random (version 4) UUID.

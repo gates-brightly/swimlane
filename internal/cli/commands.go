@@ -351,16 +351,7 @@ func cmdNew(args []string) error {
 		if ns := taskLanes(root, cfg, task); len(ns) > 0 {
 			return fmt.Errorf("task %s is lane %d already (%s): edit it there, or pick another name", task, ns[0], lane.ScriptName(root, ns[0]))
 		}
-		used := map[int]bool{}
-		for _, m := range lane.Associated(root) {
-			used[m] = true
-		}
-		free := 0
-		for m := 1; m <= lane.MaxLanes && free == 0; m++ {
-			if !used[m] {
-				free = m
-			}
-		}
+		free := lowestFree(root)
 		if free == 0 {
 			return fmt.Errorf("no free lane for task %s: all %d are in use", task, lane.MaxLanes)
 		}
@@ -369,6 +360,13 @@ func cmdNew(args []string) error {
 	n, err := laneArg(cfg, rest[0])
 	if err != nil {
 		return err
+	}
+	// A new lane above a free one spreads lane files across the repo.
+	lower := 0
+	if task == "" && !slices.Contains(lane.Associated(root), n) {
+		if free := lowestFree(root); free != 0 && free < n {
+			lower = free
+		}
 	}
 	goal := strings.TrimSpace(strings.Join(rest[1:], " "))
 	if goal == "" {
@@ -415,8 +413,25 @@ func cmdNew(args []string) error {
 	} else {
 		fmt.Printf("wrote %s (lane %d): %s\n", rel(root, lane.Script(root, n)), n, goal)
 	}
+	if lower != 0 {
+		fmt.Printf("note: lane %d is free; take the lowest free lane (swim new <task> does) so lane files don't pile up\n", lower)
+	}
 	fmt.Printf("next: fill in its steps, check them with swim lint %s, then run it: swim run %s\n", ref, ref)
 	return nil
+}
+
+// lowestFree is the lowest lane not in use (Associated), 0 when all are.
+func lowestFree(root string) int {
+	used := map[int]bool{}
+	for _, m := range lane.Associated(root) {
+		used[m] = true
+	}
+	for m := 1; m <= lane.MaxLanes; m++ {
+		if !used[m] {
+			return m
+		}
+	}
+	return 0
 }
 
 // withTask adds a # Task: line under a new script's Round: line, in its
@@ -767,8 +782,8 @@ func cmdLib(args []string) error {
 // N|ROUND-ID ... ["<note>"] [--as NAME] [--force], or swim archive
 // --passed ["<note>"].
 // Each lane's log becomes laneN.prev-<NAME>.log (with no name, its
-// round's job id) and its script a stub carrying the note: the slot is
-// empty. A script edited since its round ran holds new work: it's kept.
+// round's job id) and its script is removed (one git tracks becomes a stub
+// carrying the note): the slot is empty. A script edited since its round ran holds new work: it's kept.
 // --passed does it for every lane whose round passed. Arguments after the
 // lanes that are neither a lane number nor a job id are the note.
 func cmdArchive(args []string) error {
@@ -870,20 +885,27 @@ func cmdArchive(args []string) error {
 		if err != nil {
 			return err
 		}
-		msg := or(note, "archived as "+filepath.Base(dst))
 		if stub {
-			content, err := assets.Stub(pl.n, msg)
-			if err != nil {
-				return err
-			}
-			if err := lane.WriteScript(root, pl.n, content, true); err != nil {
+			// The slot empties: the script goes (the note lives on in the
+			// status entry and the history). One git tracks, a committed CI
+			// lane, becomes a stub instead, so no deletion gets committed.
+			if path := lane.Script(root, pl.n); lane.Tracked(root, path) {
+				content, err := assets.Stub(pl.n, or(note, "archived as "+filepath.Base(dst)))
+				if err != nil {
+					return err
+				}
+				err = lane.WriteScript(root, pl.n, content, true)
+				if err != nil {
+					return err
+				}
+			} else if err := lane.RemoveScript(root, pl.n); err != nil {
 				return err
 			}
 		}
 		status.Update(root, pl.n, cfg.Lanes, func(l *status.Lane) {
 			l.ResetRun()
 			l.State, l.Round, l.Job = status.Empty, "", ""
-			l.LastArchive = filepath.Base(dst)
+			l.LastArchive, l.LastNote = filepath.Base(dst), note
 			if stub {
 				l.Pending, l.PendingJob = "", ""
 			}
