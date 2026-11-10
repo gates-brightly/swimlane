@@ -21,7 +21,8 @@ A lane's manifest pins which form it uses (its runner).
 # swim: syntax 4
 # Round:   Cut over orders-api from SST to Terraform
 # After:   1
-# Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack orders-prod (2026-10-09: tf owns it)
+# Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack orders-prod (14 resources, data retained)
+#   why:   terraform owns orders-prod since 2026-10-09
 # Locks:   tf/orders
 # Timeout: 30m
 
@@ -31,7 +32,7 @@ stage check
 step  "tf plan" terraform -chdir=infra/orders plan -detailed-exitcode
 gate "DeletionPolicy is Retain (deployed)" bash -c 'aws cloudformation get-template --stack-name orders-prod | grep -q Retain'
 stage change
-if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (2026-10-09: tf owns it)"; then
+if guard ORDERS_ALLOW_SST_REMOVE; then
   step "sst remove" npx sst remove --stage prod
 fi
 stage verify
@@ -47,7 +48,7 @@ step "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 | `step [opts] "<label>" cmd [args]` | A step: PASS/FAIL. A failure doesn't stop the round. (`run`, its old name, works for one more release; `swim lint --fix` rewrites it.) |
 | `gate [opts] "<label>" cmd [args]` | A step whose failure (after the last attempt) stops the round. |
 | `snapshot [opts] "<label>" cmd [args]` | A read-only step whose output is also saved under `.swim/snapshots/`. |
-| `guard FLAG "<action - date, reason>"` | True if FLAG is approved for this run, else logs SKIP (a dry run). See [guards](guards.md). |
+| `guard FLAG` | True if FLAG is approved for this run, else logs SKIP (a dry run). What it does and why come from its `# Guards:` lines. See [guards](guards.md). |
 | `confirm "<question>" [answer]` | The operator must type the answer (default `yes`); anything else, or no stdin, stops the round. |
 | `last_failed` / `any_failed` | True if the previous step / any step this round failed. |
 | `reached STAGE` | True if the round started STAGE or a later one. |
@@ -194,7 +195,7 @@ OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
 | `# Task:` | A name for the lane (`swim run checks`). |
 | `# After:` | Lanes, tasks or round ids that must pass first. |
 | `# Owner:` / `# Created:` | Who wrote it / when. |
-| `# Guards: FLAG  <what it approves>` | One per flag: the only guards it can have approved. `# Guards: * <why>` lets it name flags at run time. `swim lint --fix` adds them. |
+| `# Guards: FLAG  <what it does>` | One per flag: the only guards it can have approved. The line under it, `#   why: <reason, date>`, says why. `# Guards: * <why>` lets it name flags at run time. `swim lint --fix` adds them. |
 | `# Locks:` | Resources it needs to itself (`orders-table, tf/orders`). |
 | `# Step-Timeout:` / `# Timeout:` | Default limit per step / limit for the round. |
 | `# Targets:` | What its steps talk to by default. |

@@ -1,18 +1,45 @@
 # Guards
 
 ```bash
-if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (2026-10-09: tf owns it)"; then
+# Guards: ORDERS_ALLOW_SST_REMOVE  remove SST stack orders-prod (14 resources, data retained)
+#   why: terraform owns orders-prod since 2026-10-09
+...
+if guard ORDERS_ALLOW_SST_REMOVE; then
   step "sst remove" npx sst remove --stage prod
 fi
 ```
 
-The action string is what the person approves, often all they read: one
-line with the action, the exact target, the scope (how many, from what a
-check counted), whether it can be undone, the date and the reason. "delete
-the 3 @test.example rows from prod users (snapshot keeps them) 2026-10-29:
-load-test cleanup", not "cleanup". Can't say it in a line? Split the guard.
-swim strips escape sequences, control characters and bidi overrides from
-it.
+A guard says two things in its header, and the operator reads both
+before answering, often nothing else:
+
+- **What it does**, on its `# Guards:` line: the action, the exact
+  target and the scope (how many, from what a check counted), in one line
+  of at most 100 characters. "delete the 3 @test.example rows from prod
+  users (snapshot keeps them)", not "cleanup". Can't say it in a line?
+  Split the guard.
+- **Why**, on the `#   why:` line right under it: the reason for the
+  change, with its date. "load-test cleanup (2026-10-29)".
+
+`guard FLAG` takes both from the header, from the lane's pinned copy
+under `swim run`: a lane can't change at run time what you're asked. The
+question shows them as the lane's words:
+
+```text
+lane 2 requires human approval of guard ORDERS_ALLOW_SST_REMOVE
+  round-id 3f2a9c1e-... · manifest 3be9a1c07d2e
+  the lane says:
+    does: remove SST stack orders-prod (14 resources, data retained)
+    why:  terraform owns orders-prod since 2026-10-09
+(or set ORDERS_ALLOW_SST_REMOVE=1 to approve without asking)  Y/N [N]
+```
+
+`swim status`, `swim watch` and its notifications show the same two
+lines. `swim lint` warns on a guard with no why (`guard-why`), one whose
+line says too little or too much (`guard-does`), and a guard call that
+gives its own text (`guard-text`; `guard FLAG "<text>"`, the older form,
+still runs, and `swim lint --fix` drops text that only repeats the
+header). swim strips escape sequences, control characters and bidi
+overrides from both.
 
 ## How a guard is decided
 

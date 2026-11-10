@@ -67,6 +67,9 @@ func cmdLint(args []string) error {
 			if len(fx.Renamed) > 0 {
 				fmt.Fprintf(os.Stderr, "swim lint --fix: %s: run is now step, on %s\n", fx.File, lineList(fx.Renamed))
 			}
+			if len(fx.Shortened) > 0 {
+				fmt.Fprintf(os.Stderr, "swim lint --fix: %s: guard calls take their text from # Guards:, on %s\n", fx.File, lineList(fx.Shortened))
+			}
 		}
 	}
 	fs, err := lint.Run(root, cfg, lanes)

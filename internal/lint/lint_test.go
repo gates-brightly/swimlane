@@ -18,7 +18,8 @@ func clean(n int) string {
 # Round: clean round %[1]d
 # Round-ID:   clean-job-%[1]d
 # After:
-# Guards: ALLOW_DROP  drop the old table (2026-10-09, migrated)
+# Guards: ALLOW_DROP  drop the old table
+#   why: migrated to the new one (2026-10-09)
 # Timeout: 30m
 #
 # Notes in prose: set -e is banned; mapfile too. # Round: not a key
@@ -32,7 +33,7 @@ gate "precheck" test -f go.mod
 step "quoted bash 4 is a sub-shell" bash -c 'mapfile -t x < /dev/null; echo "${x,,}"'
 step "echo is not destructive" echo "would delete nothing"
 stage change
-if guard ALLOW_DROP "drop the old table (2026-10-09, migrated)"; then
+if guard ALLOW_DROP; then
   step "drop table" aws dynamodb delete-table --table-name old
 fi
 stage verify
@@ -87,25 +88,25 @@ func TestEachCheck(t *testing.T) {
 		message string
 	}{
 		{name: "no Round", script: replace(c, "# Round: clean round 1\n", ""), code: "round", level: finding.Error},
-		{name: "placeholder", script: before(c, "stage check\n", `snapshot "current state" echo "replace with a read-only describe/list command"`+"\n"), code: "placeholder", level: finding.Error, line: 15},
+		{name: "placeholder", script: before(c, "stage check\n", `snapshot "current state" echo "replace with a read-only describe/list command"`+"\n"), code: "placeholder", level: finding.Error, line: 16},
 		{name: "template braces", script: replace(c, "# Round: clean round 1", "# Round: {{.Goal}}"), code: "placeholder", level: finding.Error, line: 3},
 		{name: "After unknown lane", script: replace(c, "# After:", "# After: 9"), code: "after", level: finding.Error, line: 5, message: "no lane 9"},
 		{name: "After itself", script: replace(c, "# After:", "# After: 1"), code: "after", level: finding.Error, line: 5, message: "itself"},
 		{name: "After unknown job", script: replace(c, "# After:", "# After: deadbeef-gone"), code: "after", level: finding.Error, message: "no lane holds round"},
 		{name: "cycle", script: replace(c, "# After:", "# After: 2"), other: replace(clean(2), "# After:", "# After: clean-job-1"), code: "cycle", level: finding.Error, line: 5, message: "lane 1, lane 2"},
-		{name: "set -e", script: before(c, "_swim_lib=", "set -euo pipefail\n"), code: "set-e", level: finding.Error, line: 10},
+		{name: "set -e", script: before(c, "_swim_lib=", "set -euo pipefail\n"), code: "set-e", level: finding.Error, line: 11},
 		{name: "set -o errexit", script: before(c, "_swim_lib=", "set -o errexit\n"), code: "set-e", level: finding.Error},
 		{name: "shebang -e", script: replace(c, "#!/usr/bin/env bash", "#!/bin/bash -e"), code: "set-e", level: finding.Error, line: 1},
 		{name: "no lane_init", script: replace(c, "lane_init 1\n", ""), code: "lane-init", level: finding.Error},
-		{name: "wrong lane_init", script: replace(c, "lane_init 1", "lane_init 3"), code: "lane-init", level: finding.Error, line: 12, message: "lane_init 3"},
+		{name: "wrong lane_init", script: replace(c, "lane_init 1", "lane_init 3"), code: "lane-init", level: finding.Error, line: 13, message: "lane_init 3"},
 		{name: "no summary", script: replace(c, "summary\n", ""), code: "summary", level: finding.Warn},
 		{name: "summary not last", script: c + "step \"late\" true\n", code: "summary", level: finding.Warn},
 		{name: "unknown stage", script: replace(c, "stage verify", "stage deploy"), code: "stage", level: finding.Error, message: `"deploy"`},
 		{name: "stage repeated", script: before(c, "summary\n", "stage check\n"), code: "stage-order", level: finding.Warn},
 		{name: "stage out of order", script: replace(replace(c, "stage snapshot\n", ""), "stage verify", "stage verify\nstage snapshot"), code: "stage-order", level: finding.Warn, message: "snapshot after verify"},
-		{name: "bash 4", script: before(c, "stage snapshot\n", "declare -A seen\n"), code: "bash4", level: finding.Warn, line: 13},
+		{name: "bash 4", script: before(c, "stage snapshot\n", "declare -A seen\n"), code: "bash4", level: finding.Warn, line: 14},
 		{name: "bash 4 in double quotes", script: before(c, "stage snapshot\n", "echo \"${NAME^^}\"\n"), code: "bash4", level: finding.Warn},
-		{name: "sed -i with no suffix", script: before(c, "stage snapshot\n", "sed -i 's/a/b/' notes.txt\n"), code: "gnu-only", level: finding.Warn, line: 13, message: "`sed -i` with no suffix is GNU-only"},
+		{name: "sed -i with no suffix", script: before(c, "stage snapshot\n", "sed -i 's/a/b/' notes.txt\n"), code: "gnu-only", level: finding.Warn, line: 14, message: "`sed -i` with no suffix is GNU-only"},
 		{name: "sed -i '' (the BSD form)", script: before(c, "stage verify\n", "step \"edit\" sed -E -i '' 's/a/b/' notes.txt\n"), code: "gnu-only", level: finding.Warn, message: "`sed -i`"},
 		{name: "grep -P", script: before(c, "stage snapshot\n", "grep -oP '\\d+' notes.txt\n"), code: "gnu-only", level: finding.Warn, message: "`grep -P`"},
 		{name: "date -d", script: before(c, "stage snapshot\n", "when=$(date -d yesterday +%F)\n"), code: "gnu-only", level: finding.Warn, message: "`date -d`"},
@@ -114,16 +115,16 @@ func TestEachCheck(t *testing.T) {
 		{name: "timeout", script: before(c, "stage verify\n", "step \"slow\" timeout 30 make check\n"), code: "gnu-only", level: finding.Warn, message: "`timeout`"},
 		{name: "guard not listed", script: before(c, "stage verify\n", "if guard ALLOW_X \"x\"; then step \"x\" true; fi\n"), code: "guard-unlisted", level: finding.Error, message: "swim refuses it when it asks"},
 		{name: "guard named at run time", script: before(c, "stage verify\n", "if guard \"$FLAG\" \"x\"; then step \"x\" true; fi\n"), code: "guard-dynamic", level: finding.Error, message: "# Guards: *"},
-		{name: "guard not used", script: before(c, "# Timeout:", "# Guards: ALLOW_Z  never used\n"), code: "guard-unused", level: finding.Warn, line: 7},
+		{name: "guard not used", script: before(c, "# Timeout:", "# Guards: ALLOW_Z  drop the spare table\n#   why: never used, and lint says so\n"), code: "guard-unused", level: finding.Warn, line: 8},
 		{name: "destructive outside guard", script: before(c, "stage verify\n", "step \"clean\" rm -rf build\n"), code: "destructive", level: finding.Warn},
 		{name: "destructive after else", script: replace(c, "fi\n", "else\n  step \"destroy\" terraform destroy\nfi\n"), code: "destructive", level: finding.Warn},
 		{name: "blocked from config", script: before(c, "stage verify\n", "step \"deploy\" make deploy-prod\n"), cfg: func(c *config.Config) { c.BlockedCommands = []string{"deploy-prod"} }, code: "blocked", level: finding.Error},
 		{name: "secret echoed (auto)", script: before(c, "stage verify\n", "echo \"token: $DEPLOY_TOKEN\"\n"), code: "secret-echo", level: finding.Warn},
 		{name: "secret echoed (secret_env)", script: before(c, "stage verify\n", "step \"show\" printf '%s' ${MY_KEY}\n"), cfg: func(c *config.Config) { c.SecretEnv = []string{"MY_KEY"} }, code: "secret-echo", level: finding.Warn},
-		{name: "bad Timeout", script: replace(c, "# Timeout: 30m", "# Timeout: soon"), code: "timeout", level: finding.Error, line: 7},
-		{name: "Timeout in words", script: replace(c, "# Timeout: 30m", "# Timeout: 10 minutes"), code: "timeout", level: finding.Error, line: 7},
-		{name: "lowercase key", script: replace(c, "# Timeout: 30m", "# timeout: 30m"), code: "header-key", level: finding.Error, line: 7, message: "(header keys are case-sensitive): did you mean # Timeout:?"},
-		{name: "synonym key", script: before(c, "# Timeout:", "# Depends: 2\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
+		{name: "bad Timeout", script: replace(c, "# Timeout: 30m", "# Timeout: soon"), code: "timeout", level: finding.Error, line: 8},
+		{name: "Timeout in words", script: replace(c, "# Timeout: 30m", "# Timeout: 10 minutes"), code: "timeout", level: finding.Error, line: 8},
+		{name: "lowercase key", script: replace(c, "# Timeout: 30m", "# timeout: 30m"), code: "header-key", level: finding.Error, line: 8, message: "(header keys are case-sensitive): did you mean # Timeout:?"},
+		{name: "synonym key", script: before(c, "# Timeout:", "# Depends: 2\n"), code: "header-key", level: finding.Error, line: 8, message: "did you mean # After:?"},
 		{name: "header comment", script: replace(c, "# After:", "# After: 2  # waits for the schema"), code: "header-comment", level: finding.Error, line: 5, message: "# After: carries a # comment"},
 		{name: "comment on a text header", script: replace(c, "# Round: clean round 1", "# Round: clean round 1  # see the ticket"), code: "header-comment", level: finding.Error, line: 3},
 		{name: "label for a command", script: before(c, "stage verify\n", "step echo hi\n"), code: "step", level: finding.Error, message: `runs "hi", which isn't a command here`},
@@ -131,12 +132,12 @@ func TestEachCheck(t *testing.T) {
 		{name: "step in a piped loop", script: before(c, "stage verify\n", "ls | while read t; do\n  gate \"check $t\" test -n \"$t\"\ndone\n"), code: "step-subshell", level: finding.Error},
 		{name: "step in a one-line piped loop", script: before(c, "stage verify\n", "ls | while read t; do step \"each\" echo \"$t\"; done\n"), code: "step-subshell", level: finding.Error},
 		{name: "pipe after a continuation", script: before(c, "stage verify\n", "step \"count\" ls \\\n  -la | wc -l\n"), code: "step-pipe", level: finding.Error},
-		{name: "Requires with lanes", script: before(c, "# Timeout:", "# Requires: 2, 3\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
-		{name: "typo key", script: before(c, "# Timeout:", "# Lock: db\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Locks:?"},
-		{name: "swapped letters", script: before(c, "# Timeout:", "# Inlcudes: lib/x.sh\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Includes:?"},
-		{name: "go vet on an empty stage", script: before(c, "stage verify\n", "step \"vet\" go vet ./...\n"), code: "workspace-empty", level: finding.Warn, line: 23, message: "checks nothing"},
+		{name: "Requires with lanes", script: before(c, "# Timeout:", "# Requires: 2, 3\n"), code: "header-key", level: finding.Error, line: 8, message: "did you mean # After:?"},
+		{name: "typo key", script: before(c, "# Timeout:", "# Lock: db\n"), code: "header-key", level: finding.Error, line: 8, message: "did you mean # Locks:?"},
+		{name: "swapped letters", script: before(c, "# Timeout:", "# Inlcudes: lib/x.sh\n"), code: "header-key", level: finding.Error, line: 8, message: "did you mean # Includes:?"},
+		{name: "go vet on an empty stage", script: before(c, "stage verify\n", "step \"vet\" go vet ./...\n"), code: "workspace-empty", level: finding.Warn, line: 24, message: "checks nothing"},
 		{name: "gofmt in bash -c on an empty stage", script: before(c, "stage verify\n", "step \"fmt\" bash -c 'out=$(gofmt -s -l .); [ -z \"$out\" ]'\n"), code: "workspace-empty", level: finding.Warn, message: "gofmt"},
-		{name: "cross-lane read", script: before(c, "stage verify\n", "step \"read\" cat shared/report.json\n"), other: before(clean(2), "stage verify\n", "step \"fetch\" curl -fsS -o shared/report.json https://example.com\n"), code: "cross-lane", level: finding.Info, message: "lane.2.sh:23 writes"},
+		{name: "cross-lane read", script: before(c, "stage verify\n", "step \"read\" cat shared/report.json\n"), other: before(clean(2), "stage verify\n", "step \"fetch\" curl -fsS -o shared/report.json https://example.com\n"), code: "cross-lane", level: finding.Info, message: "lane.2.sh:24 writes"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -311,12 +312,19 @@ summary
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fixed) != 1 || strings.Join(fixed[0].Added, "|") != "# Guards: ALLOW_B  drop the old table|# Guards: *  flags named at run time (say which, and why)|# Includes: lib/x.sh" {
+	if len(fixed) != 1 || strings.Join(fixed[0].Added, "|") != "# Guards: ALLOW_B  drop the old table|#   why: <why this change is made, with its date>|# Guards: *  flags named at run time (say which, and why)|# Includes: lib/x.sh" {
 		t.Fatalf("fixed: %+v", fixed)
 	}
+	// Both guard calls repeated the header: they take its text now.
+	if fmt.Sprint(fixed[0].Shortened) != "[14 15]" {
+		t.Errorf("shortened: %v", fixed[0].Shortened)
+	}
 	got, _ := os.ReadFile(filepath.Join(root, "lane.1.sh"))
-	if !strings.Contains(string(got), "# Guards: ALLOW_A  a\n# Guards: ALLOW_B  drop the old table\n# Guards: *") || !strings.Contains(string(got), "# Includes: lib/x.sh\n#\n# Goal: prose") {
+	if !strings.Contains(string(got), "# Guards: ALLOW_A  a\n# Guards: ALLOW_B  drop the old table\n#   why: <why this change is made, with its date>\n# Guards: *") || !strings.Contains(string(got), "# Includes: lib/x.sh\n#\n# Goal: prose") {
 		t.Errorf("script:\n%s", got)
+	}
+	if !strings.Contains(string(got), "if guard ALLOW_A; then step a true; fi\nif guard ALLOW_B; then step b true; fi\nguard \"$F\" \"dynamic\"") {
+		t.Errorf("guard calls:\n%s", got)
 	}
 	if st, _ := os.Stat(filepath.Join(root, "lane.1.sh")); st.Mode().Perm() != 0o755 {
 		t.Errorf("mode %v", st.Mode())
@@ -512,6 +520,27 @@ func TestTreeWrite(t *testing.T) {
 	} {
 		if fs := Lint(cfg4(), map[int]string{1: script}, 1); len(fs) != 0 {
 			t.Errorf("%s: %+v", name, fs)
+		}
+	}
+}
+
+// A guard says what it does in a line, and why on the line under it; a
+// call that gives its own text repeats the header, or says other words.
+func TestGuardDescriptions(t *testing.T) {
+	header := func(guards string) string {
+		return replace(clean(1), "# Guards: ALLOW_DROP  drop the old table\n#   why: migrated to the new one (2026-10-09)\n", guards)
+	}
+	for name, tc := range map[string]struct{ script, want string }{
+		"no why":          {header("# Guards: ALLOW_DROP  drop the old table\n"), "guard-why"},
+		"why too far":     {header("# Guards: ALLOW_DROP  drop the old table\n# Timeout: 1h\n#   why: migrated\n"), "guard-why"},
+		"vague":           {header("# Guards: ALLOW_DROP  cleanup\n#   why: migrated\n"), "guard-does"},
+		"long":            {header("# Guards: ALLOW_DROP  drop the old table " + strings.Repeat("and more ", 12) + "\n#   why: migrated\n"), "guard-does"},
+		"placeholder why": {header("# Guards: ALLOW_DROP  drop the old table\n#   why: <why this change is made, with its date>\n"), "guard-why"},
+		"repeats":         {replace(clean(1), "if guard ALLOW_DROP; then", `if guard ALLOW_DROP "drop the old table"; then`), "guard-text"},
+		"differs":         {replace(clean(1), "if guard ALLOW_DROP; then", `if guard ALLOW_DROP "something else entirely"; then`), "guard-text"},
+	} {
+		if fs := Lint(cfg4(), map[int]string{1: tc.script}, 1); codes(fs) != tc.want {
+			t.Errorf("%s: got [%s], want [%s]: %+v", name, codes(fs), tc.want, fs)
 		}
 	}
 }

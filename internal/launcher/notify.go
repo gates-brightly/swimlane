@@ -86,9 +86,13 @@ func notifyAsk(o Options, req approval.Request) {
 }
 
 // askText is what a question asks, for a notification: "approval of
-// DEPLOY: deploy 2.4.1".
+// DEPLOY: deploy 2.4.1 · why: the 2.4.0 rollback".
 func askText(req approval.Request) string {
-	return "approval of " + req.Flag + ": " + req.Desc
+	s := "approval of " + req.Flag + ": " + req.Desc
+	if req.Why != "" {
+		s += " · why: " + req.Why
+	}
+	return s
 }
 
 // FirstFailure is the first failed step of lanes (in order) as their

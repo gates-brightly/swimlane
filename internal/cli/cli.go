@@ -61,16 +61,17 @@ func init() {
 		"guard":    {run: cmdGuard},
 		"stage":    {run: cmdStagePublic},
 		// Called by the lane script library, not by people.
-		"_start":   {run: cmdStart, hidden: true},
-		"_finish":  {run: cmdFinish, hidden: true},
-		"_batch":   {run: cmdBatch, hidden: true},
-		"_mark":    {run: cmdMark, hidden: true},
-		"_approve": {run: cmdApproveHook, hidden: true},
-		"_stage":   {run: cmdStage, hidden: true},
-		"_wrap":    {run: cmdWrap, hidden: true},
-		"_step":    {run: cmdStep, hidden: true},
-		"_lib":     {run: cmdLib, hidden: true},
-		"_helper":  {run: cmdHelperCheck, hidden: true},
+		"_start":      {run: cmdStart, hidden: true},
+		"_finish":     {run: cmdFinish, hidden: true},
+		"_batch":      {run: cmdBatch, hidden: true},
+		"_mark":       {run: cmdMark, hidden: true},
+		"_approve":    {run: cmdApproveHook, hidden: true},
+		"_guard_text": {run: cmdGuardTextHook, hidden: true},
+		"_stage":      {run: cmdStage, hidden: true},
+		"_wrap":       {run: cmdWrap, hidden: true},
+		"_step":       {run: cmdStep, hidden: true},
+		"_lib":        {run: cmdLib, hidden: true},
+		"_helper":     {run: cmdHelperCheck, hidden: true},
 	}
 }
 

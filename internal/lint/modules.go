@@ -104,7 +104,7 @@ func changingCalls(c *Context, s *Script) []finding.Finding {
 		}
 		fn, _, _ := strings.Cut(strings.TrimSpace(r.Text), " ")
 		if what, ok := declared[fn]; ok {
-			out = append(out, f(finding.Warn, "destructive", r.Line, "wrap it: if guard FLAG \"<action - date, reason>\"; then "+fn+" ...; fi",
+			out = append(out, f(finding.Warn, "destructive", r.Line, "guard it: # Guards: FLAG  <what it does>, #   why: <why>, then if guard FLAG; then "+fn+" ...; fi",
 				"%s changes things: %s; it isn't inside a guard block", fn, what))
 		}
 	}

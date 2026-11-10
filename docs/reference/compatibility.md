@@ -37,7 +37,7 @@ an older `go` fetches it when `GOTOOLCHAIN` allows.
 | **ssh-keygen, OpenSSH 8.0 or newer** | Signing the chain, and `swim verify`. Without it, `signing: auto` records unsigned entries; `signing: required` refuses to run. |
 
 A lane in another language calls the plain CLI (`swim step "<label>" --
-cmd`, `swim guard FLAG "<action>"`) and needs only its own interpreter.
+cmd`, `swim guard FLAG`) and needs only its own interpreter.
 
 ## Versions
 

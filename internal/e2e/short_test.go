@@ -21,24 +21,25 @@ func shortLane(t *testing.T, r *repo, n int, src string) {
 func TestShortFormLane(t *testing.T) {
 	r := newRepo(t)
 	shortLane(t, r, 1, `# Round: Say hello
-# Guards: HELLO_ALLOW_WRITE  write hello.txt
+# Guards: HELLO_ALLOW_WRITE  write hello.txt to the repo
+#   why: the test reads it back
 stage check
 step "say hello" echo "hello from swim"
 stage change
-if guard HELLO_ALLOW_WRITE "write hello.txt"; then
+if guard HELLO_ALLOW_WRITE; then
   step "write it" bash -c 'echo hi > "$SWIM_ROOT/hello.txt"'
 fi
 `)
 	contains(t, "lint", r.mustSwim("lint", "1"), "no problems found")
 
 	r.mustDryRun("run", "1", "--plain", "--no-prompt")
-	contains(t, "dry run", r.log(1), "PASS  say hello", "SKIP  write hello.txt (dry run", "== END SKIP")
+	contains(t, "dry run", r.log(1), "PASS  say hello", "SKIP  write hello.txt to the repo (dry run", "== END SKIP")
 	if _, err := os.Stat(filepath.Join(r.root, "hello.txt")); err == nil {
 		t.Fatal("the dry run wrote hello.txt")
 	}
 
 	r.mustSwimEnv([]string{"HELLO_ALLOW_WRITE=1"}, "run", "1", "--plain")
-	contains(t, "approved", r.log(1), "APPROVED  write hello.txt (HELLO_ALLOW_WRITE=1", "PASS  write it", "== END PASS")
+	contains(t, "approved", r.log(1), "APPROVED  write hello.txt to the repo (HELLO_ALLOW_WRITE=1", "PASS  write it", "== END PASS")
 	if got, _ := os.ReadFile(filepath.Join(r.root, "hello.txt")); string(got) != "hi\n" {
 		t.Errorf("hello.txt = %q", got)
 	}

@@ -79,7 +79,11 @@ func (n *watchNotes) asked(q watchAsk) {
 	}
 	what := "approval of " + q.msg.Flag
 	title := n.from.Title(fmt.Sprintf("lane %d needs you", q.msg.Lane))
-	body := fmt.Sprintf("%s: %s · batch #%d", what, approval.Clean(q.msg.Desc), q.seq)
+	body := what + ": " + approval.Clean(q.msg.Desc)
+	if q.msg.Reason != "" {
+		body += " · why: " + approval.Clean(q.msg.Reason)
+	}
+	body += fmt.Sprintf(" · batch #%d", q.seq)
 	n.t.Notify(title, body)
 	note := notify.Note{Event: notify.EventAsk, Title: title, Body: body, Lanes: []int{q.msg.Lane}, Batch: q.seq}
 	if note.ApproveURL, note.RejectURL, note.Expires = n.phone.issue(q); note.ApproveURL != "" {

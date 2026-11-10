@@ -22,7 +22,7 @@ import (
 //	swim step [options] "<label>" -- cmd [args...]
 //	swim gate [options] "<label>" -- cmd [args...]
 //	swim snapshot [options] "<label>" -- cmd [args...]
-//	swim guard FLAG "<action - date, reason>"
+//	swim guard FLAG
 //	swim stage NAME
 //
 // They read the lane from SWIM_LANE, which swim's wrapper (swim _wrap)
@@ -215,20 +215,32 @@ func signalEnd() {
 // window.
 const endWait = 10 * time.Second
 
-// swim guard FLAG "<action>": exit 0 if the operator approves the action,
-// 1 if not (recorded as a dry run). As the library's guard: FLAG=1 approves
-// up front; unset, swim asks the operator (or uses signed approvals).
+// swim guard FLAG: exit 0 if the operator approves what the header says
+// FLAG does, 1 if not (recorded as a dry run). As the library's guard:
+// FLAG=1 approves up front; unset, swim asks the operator. The older form,
+// swim guard FLAG "<action>", gives the text in the call.
 func cmdGuard(args []string) error {
 	n, err := laneEnv("guard")
 	if err != nil {
 		return err
 	}
-	if len(args) != 2 {
-		return usagef(`usage: swim guard FLAG "<action - date, reason>"`)
+	if len(args) != 1 && len(args) != 2 {
+		return usagef("usage: swim guard FLAG (the header says what it does: # Guards: FLAG  <does>)")
 	}
-	flag, desc := args[0], args[1]
+	flag := args[0]
 	if !chars.Ident(flag) {
 		return usagef("bad guard flag name: %s", flag)
+	}
+	desc := ""
+	if len(args) == 2 {
+		desc = args[1]
+	}
+	if desc == "" {
+		root, cfg, k, err := laneCtx(n)
+		if err != nil {
+			return err
+		}
+		desc = or(guardText(root, cfg, k, flag).Does, flag)
 	}
 	if err := refuseEnded("guard", n, desc); err != nil {
 		return err

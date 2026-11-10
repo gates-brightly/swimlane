@@ -2,7 +2,8 @@
 # swim: syntax 4
 # Round: words in quotes, comments and heredocs
 # Round-ID:   corpus-quoted
-# Guards: ALLOW_REAL  the one real guard (2026-10-16, corpus)
+# Guards: ALLOW_REAL  the one real guard
+#   why: the corpus needs one (2026-10-16)
 # Timeout: 30m
 #
 # Every command and keyword lint looks for, named only where bash doesn't
@@ -68,7 +69,7 @@ echo "continued: stage change; rm -rf /" \
   'swim secret get TOKEN'
 gate "precheck" test -d .
 stage change
-if guard ALLOW_REAL "the one real guard (2026-10-16, corpus)"; then
+if guard ALLOW_REAL; then
   step "change" true
 fi
 stage verify

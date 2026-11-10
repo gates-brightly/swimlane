@@ -90,7 +90,7 @@ func TestTourRuns(t *testing.T) {
 	contains(t, "the tour", string(out),
 		"PASS  count them",                                                            // 2
 		"STOP  gate failed: there is a config file", "the round failed, as it should", // 3
-		"SKIP  remove scratch.txt (quickstart) (dry run", "scratch.txt is gone", // 4
+		"SKIP  remove scratch.txt from the repo (dry run", "scratch.txt is gone", // 4
 		"approved in queue q-", "removed, approved in the queue", // 5
 		"changed since it was queued", "skipped, not run", // 5: the edit voids it
 		"skipped (lane 3 failed)",                                  // 6

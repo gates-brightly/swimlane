@@ -80,7 +80,9 @@ func (v *statusView) pending(l *status.Lane) *pendingView {
 	}
 	if len(info.Guards) > 0 {
 		for _, g := range info.Guards {
-			h.Guards = append(h.Guards, v.snap.Guard(g.Flag, g.Desc))
+			gs := v.snap.Guard(g.Flag, g.Desc)
+			gs.Why = g.Why
+			h.Guards = append(h.Guards, gs)
 		}
 	}
 	pv := &pendingView{Header: h}
@@ -116,6 +118,9 @@ func (pv *pendingView) print(p ui.Painter, indent string) {
 			head += "  " + g.Desc
 		}
 		line(head, ui.Cyan)
+		if g.Why != "" {
+			line("       why: "+g.Why, ui.Dim)
+		}
 		color := ui.Yellow
 		if g.Approved {
 			color = ui.Green

@@ -2,6 +2,7 @@ package lane
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -288,5 +289,33 @@ func TestOldJobHeaderIsRoundID(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "lane.1.yml"), []byte("job: side-id\n"), 0o644)
 	if info, err := ReadScript(root, 1); err != nil || info.Job != "side-id" {
 		t.Fatalf("sidecar job: read as %q (%v)", info.Job, err)
+	}
+}
+
+// The "#   why:" line under a # Guards: line says why that guard's change
+// is made; one anywhere else is nobody's, and doesn't end the header
+// block (a key after it is still read).
+func TestGuardWhy(t *testing.T) {
+	src := "#!/usr/bin/env bash\n# swim: syntax 4\n# Round: r\n" +
+		"# Guards: DROP  drop table orders_old (12 rows)\n#   why: merged into orders (2026-11-02)\n" +
+		"# Guards: *  flags from the inventory\n#   why: not a guard's\n" +
+		"# Guards: SHIP  ship 2.4.1\n# Ticket: OPS-9\n#   Why: too late, a key came between\n"
+	info := ParseScript(src)
+	if len(info.Guards) != 2 || info.Guards[0].Why != "merged into orders (2026-11-02)" || info.Guards[1].Why != "" {
+		t.Errorf("guards: %+v", info.Guards)
+	}
+	if len(info.Extra) != 1 || info.Extra[0].K != "Ticket" {
+		t.Errorf("extra: %+v", info.Extra)
+	}
+
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "lane.2"), []byte("\x7fELF\x00\x01binary"), 0o755)
+	os.WriteFile(filepath.Join(root, "lane.2.yml"), []byte("round: r\nguards:\n  SHIP: ship it\n  DROP: {does: drop table t, why: it moved}\n"), 0o644)
+	info, err := ReadScript(root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(info.Guards) != "[{DROP drop table t it moved} {SHIP ship it }]" {
+		t.Errorf("sidecar guards: %+v", info.Guards)
 	}
 }

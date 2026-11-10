@@ -74,13 +74,14 @@ cat > lane.2.sh <<'EOF'
 #!/usr/bin/env swim
 # swim: syntax 4
 # Round: Remove scratch.txt
-# Guards: HOUR_ALLOW_RM  remove scratch.txt
+# Guards: HOUR_ALLOW_RM  remove scratch.txt from the repo
+#   why: the quickstart made it
 
 stage check
 gate "scratch.txt is there" test -f "$SWIM_ROOT/scratch.txt"
 
 stage change
-if guard HOUR_ALLOW_RM "remove scratch.txt (quickstart)"; then
+if guard HOUR_ALLOW_RM; then
   step "remove it" rm "$SWIM_ROOT/scratch.txt"
 fi
 
@@ -96,7 +97,9 @@ swim log 2 | grep -E 'SKIP|APPROVED'
 
 Unapproved, the guarded step is a dry run and the round is skipped: `swim
 run` exits 3, and a lane after it won't start. On a terminal swim asks;
-`HOUR_ALLOW_RM=1` approves up front, and the log says which.
+`HOUR_ALLOW_RM=1` approves up front, and the log says which. What swim
+asks is the header's: the `# Guards:` line says what the guard does, the
+`why:` line under it why.
 ([guards](reference/guards.md))
 
 ## 5. Approve ahead, and what voids it

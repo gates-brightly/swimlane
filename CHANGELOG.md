@@ -38,6 +38,42 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+**What changed for you**
+
+- A guard says what it does and why: `# Guards: FLAG  <does>`, then `#   why: <reason, date>` under it; the approval asks both.
+- `if guard FLAG; then`: the call takes its text from the header (`swim lint --fix` drops a repeated copy).
+
+### Added
+
+- **Why a guard is there:** a `#   why: <reason>` line right under a
+  `# Guards: FLAG  <what it does>` line says why the change is made. The
+  approval prompt, `swim watch`, its notifications (and the phone's) and
+  `swim status` show both:
+
+  ```text
+  lane 2 requires human approval of guard ORDERS_ALLOW_SST_REMOVE
+    round-id 3f2a9c1e-... · manifest 3be9a1c07d2e
+    the lane says:
+      does: remove SST stack orders-prod (14 resources, data retained)
+      why:  terraform owns orders-prod since 2026-10-09
+  ```
+
+  In `lane.N.yml`: `guards: {FLAG: {does: ..., why: ...}}` (a plain
+  string still means what it does). `swim status --yaml` has each guard's
+  `why`.
+- **`guard FLAG` with no text:** the library's `guard` and `swim guard`
+  take what the guard does from the header. Under `swim run` the question
+  is always the pinned header's words (the manifest's `guard_text`), not
+  what the lane's call sends, so a lane can't change at run time what
+  you're asked. `guard FLAG "<text>"` still runs as before.
+- **Lint:** `guard-why` warns on a declared guard with no `why:` line;
+  `guard-does` on a `# Guards:` line of fewer than 3 words, a
+  placeholder, or over 100 characters; `guard-text` now also warns on a
+  call that repeats its header text, which `swim lint --fix` drops. A
+  `# Guards:` line `--fix` adds comes with a `#   why: <...>` line to
+  fill in. `swim new`'s template, the guides and the skill use the new
+  form.
+
 ## 0.20261110.1 (v0.20261110.1, 2026-11-10)
 
 ### Changed

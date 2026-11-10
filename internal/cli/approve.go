@@ -45,7 +45,12 @@ func cmdApproveHook(args []string) error {
 	if err != nil {
 		return err
 	}
-	flag, desc := args[1], cfg.Masker(os.Environ()).String(args[2])
+	flag := args[1]
+	text := guardText(root, cfg, n, flag)
+	if args[2] == "" {
+		args[2] = text.Does // guard FLAG: the header says what it does
+	}
+	desc := cfg.Masker(os.Environ()).String(args[2])
 	job, run := os.Getenv("SWIM_ROUND_ID"), os.Getenv("SWIM_RUN")
 	dryRun := func(why string) error {
 		detail := "dry run: set " + flag + "=1 to approve"
@@ -113,7 +118,7 @@ func cmdApproveHook(args []string) error {
 		return dryRun(why)
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = display.WaitingApproval(desc) })
-	req := approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc,
+	req := approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc, Why: cfg.Masker(os.Environ()).String(text.Why),
 		Token: os.Getenv(approval.TokenEnv), Manifest: man}
 	resp := ask(req, func() bool {
 		return lane.StopRequested(root, n, run)
@@ -298,3 +303,31 @@ func roundDeadline() time.Time {
 // approveRecorded is set when swim _approve has put an approval in the
 // chain itself, so the _mark it calls doesn't record it twice.
 var approveRecorded bool
+
+// guardText is what lane n's header says guard flag does and why: from
+// the pinned copy's manifest under swim run, else the script on disk.
+func guardText(root string, cfg *config.Config, n int, flag string) manifest.GuardText {
+	if m := laneManifest(root, cfg, n); m != nil {
+		if t, ok := m.GuardText[flag]; ok {
+			return t
+		}
+	}
+	return manifest.GuardText{}
+}
+
+// cmdGuardTextHook prints what lane N's header says guard FLAG does (the
+// flag itself when it says nothing), for guard FLAG with no text of its
+// own.
+//
+//	swim _guard_text N FLAG
+func cmdGuardTextHook(args []string) error {
+	if len(args) != 2 {
+		return usagef("usage: swim _guard_text N FLAG")
+	}
+	root, cfg, n, err := laneCtx(args[0])
+	if err != nil {
+		return err
+	}
+	fmt.Println(or(guardText(root, cfg, n, args[1]).Does, args[1]))
+	return nil
+}
